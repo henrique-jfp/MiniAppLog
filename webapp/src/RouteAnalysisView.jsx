@@ -619,9 +619,82 @@ Rua General Polidoro, 322, 301
 
           {/* Resultado da Importação */}
           {importAnalysis && (
-            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4">
-              <p className="font-bold text-green-900 dark:text-green-300">✅ Sessão Análise Gerada!</p>
-              <p className="text-sm text-green-800 dark:text-green-400">Próximo: Otimizar e distribuir entregadores</p>
+            <div className="space-y-4">
+              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4">
+                <p className="font-bold text-green-900 dark:text-green-300">✅ Sessão Análise Gerada!</p>
+                <p className="text-sm text-green-800 dark:text-green-400">Próximo: Otimizar e distribuir entregadores</p>
+              </div>
+
+              {importAnalysis.formatted && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 space-y-4">
+                  <h4 className="font-bold text-gray-900 dark:text-white">📊 Análise da Sessão</h4>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                      <p className="text-xs text-gray-500">Valor</p>
+                      <p className="font-bold text-gray-900 dark:text-white">{importAnalysis.formatted.header?.value}</p>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                      <p className="text-xs text-gray-500">Tipo</p>
+                      <p className="font-bold text-gray-900 dark:text-white">{importAnalysis.formatted.header?.type}</p>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                      <p className="text-xs text-gray-500">Score</p>
+                      <p className="font-bold text-gray-900 dark:text-white">{importAnalysis.formatted.header?.score}</p>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                      <p className="text-xs text-gray-500">Recomendação</p>
+                      <p className="font-bold text-gray-900 dark:text-white">{importAnalysis.formatted.header?.recommendation}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
+                      <p className="text-xs text-blue-600">Ganho/Hora</p>
+                      <p className="font-bold text-gray-900 dark:text-white">{importAnalysis.formatted.earnings?.hourly}</p>
+                    </div>
+                    <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
+                      <p className="text-xs text-blue-600">Ganho/Pacote</p>
+                      <p className="font-bold text-gray-900 dark:text-white">{importAnalysis.formatted.earnings?.package}</p>
+                    </div>
+                    <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg col-span-2">
+                      <p className="text-xs text-blue-600">Tempo Estimado</p>
+                      <p className="font-bold text-gray-900 dark:text-white">{importAnalysis.formatted.earnings?.time_estimate}</p>
+                    </div>
+                  </div>
+
+                  {importAnalysis.formatted.top_drops?.length > 0 && (
+                    <div>
+                      <p className="text-sm font-bold text-gray-900 dark:text-white mb-2">🔥 Top Drops</p>
+                      <div className="space-y-2">
+                        {importAnalysis.formatted.top_drops.map((drop, i) => (
+                          <div key={i} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg">{drop.emoji}</span>
+                              <span className="font-semibold text-gray-900 dark:text-white">{drop.street}</span>
+                            </div>
+                            <span className="text-sm text-gray-600 dark:text-gray-300">{drop.count} endereços</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {importAnalysis.minimap_url && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <div className="bg-gradient-to-r from-purple-500 to-pink-500 p-4 text-white font-bold">
+                    🗺️ Minimapa da Sessão
+                  </div>
+                  <iframe
+                    src={importAnalysis.minimap_url}
+                    className="w-full h-96 border-0"
+                    title="Minimapa da Sessão"
+                    allowFullScreen=""
+                  />
+                </div>
+              )}
             </div>
           )}
 
@@ -658,8 +731,20 @@ Rua General Polidoro, 322, 301
               {routes.map((route, idx) => (
                 <div key={route.route_id} className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
                   <p className="font-bold text-gray-900 dark:text-white mb-3">
-                    Rota {idx + 1}: {route.stops} paradas, {route.packages} pacotes
+                    Rota {idx + 1}: {route.total_stops ?? '-'} paradas, {route.total_packages ?? '-'} pacotes
                   </p>
+                  {route.map_url && (
+                    <div className="mb-3">
+                      <a
+                        href={route.map_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 text-sm font-semibold text-purple-700 dark:text-purple-300 hover:underline"
+                      >
+                        🗺️ Ver mapa desta rota
+                      </a>
+                    </div>
+                  )}
                   <select
                     value={assignments[route.route_id] || ''}
                     onChange={(e) => handleAssign(route.route_id, e.target.value)}
@@ -678,6 +763,12 @@ Rua General Polidoro, 322, 301
                 className={`w-full ${allAssigned ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-400'} text-white font-bold py-3 rounded-lg transition-colors`}
               >
                 {loading ? 'Enviando...' : '✅ Iniciar Rotas'}
+              </button>
+              <button
+                onClick={() => (window.location.href = '/?tab=separation')}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg transition-colors"
+              >
+                🔄 Abrir Modo Separação
               </button>
             </div>
           )}

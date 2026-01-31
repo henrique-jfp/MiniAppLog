@@ -629,8 +629,27 @@ async def optimize_routes(data: OptimizeInput):
     entregadores_lista = [{'name': d.name, 'id': str(d.telegram_id)} for d in deliverer_service.get_all_deliverers()]
 
     for route in routes:
-        stops_data = [(p.lat, p.lng, p.address, 1, 'pending') for p in route.optimized_order]
-        eta_minutes = max(10, route.total_distance_km / 25 * 60 + len(route.optimized_order) * 3)
+        # Agrupa por endereço para evitar paradas duplicadas
+        stops_by_addr = {}
+        for p in route.optimized_order:
+            if p.lat is None or p.lng is None:
+                continue
+            addr_key = p.address.lower().strip()
+            if addr_key not in stops_by_addr:
+                stops_by_addr[addr_key] = {
+                    'lat': p.lat,
+                    'lng': p.lng,
+                    'address': p.address,
+                    'count': 0
+                }
+            stops_by_addr[addr_key]['count'] += 1
+
+        stops_data = [
+            (d['lat'], d['lng'], d['address'], d['count'], 'pending')
+            for d in stops_by_addr.values()
+        ]
+        total_stops = len(stops_data)
+        eta_minutes = max(10, route.total_distance_km / 25 * 60 + total_stops * 3)
         html = MapGenerator.generate_interactive_map(
             stops=stops_data,
             entregador_nome=route.id,
@@ -649,6 +668,7 @@ async def optimize_routes(data: OptimizeInput):
             "route_id": route.id,
             "color": route.color,
             "total_packages": route.total_packages,
+            "total_stops": total_stops,
             "map_url": f"/api/maps/{filename}"
         })
 

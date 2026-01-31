@@ -706,6 +706,12 @@ async def finalize_session(data: FinalizeSessionInput):
     if not session:
         raise HTTPException(status_code=404, detail="Nenhuma sessão ativa")
 
+    if session.total_pending > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ainda existem {session.total_pending} pacotes pendentes. Finalize todas as entregas antes de fechar a rota."
+        )
+
     route_value = getattr(session, "route_value", None)
     revenue = data.revenue if data.revenue is not None else (route_value or 0.0)
 

@@ -9,6 +9,7 @@ export default function RouteAnalysisView() {
   const [routeValue, setRouteValue] = useState('');
   const [minimapUrl, setMinimapUrl] = useState(null);
   const [deliverers, setDeliverers] = useState([]);
+  const [sessionStats, setSessionStats] = useState(null);
   const [numDeliverers, setNumDeliverers] = useState(2);
   const [routes, setRoutes] = useState([]);
   const [assignments, setAssignments] = useState({});
@@ -22,6 +23,11 @@ export default function RouteAnalysisView() {
       .then(r => r.json())
       .then(setDeliverers)
       .catch(() => setDeliverers([]));
+
+    fetch('/api/admin/stats')
+      .then(r => r.json())
+      .then(setSessionStats)
+      .catch(() => setSessionStats(null));
   }, []);
 
   const handleFileChange = (e) => {
@@ -190,6 +196,10 @@ export default function RouteAnalysisView() {
   };
 
   const handleFinalize = async () => {
+    if (sessionStats?.pending > 0) {
+      setError(`Ainda existem ${sessionStats.pending} pacotes pendentes. Finalize todas as entregas antes de fechar a rota.`);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -401,6 +411,11 @@ export default function RouteAnalysisView() {
         <h3 className="font-bold flex items-center gap-2">
           <List size={18} className="text-green-500" /> Fechar Dia
         </h3>
+        {sessionStats?.pending > 0 && (
+          <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
+            Ainda existem {sessionStats.pending} pacotes pendentes. Finalize todas as entregas (entregue ou insucesso) para liberar o fechamento.
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-2">
           <input
             type="number"
@@ -408,6 +423,7 @@ export default function RouteAnalysisView() {
             value={finalizeRevenue}
             onChange={(e) => setFinalizeRevenue(e.target.value)}
             className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+            disabled={sessionStats?.pending > 0}
           />
           <input
             type="number"
@@ -415,11 +431,15 @@ export default function RouteAnalysisView() {
             value={finalizeCosts}
             onChange={(e) => setFinalizeCosts(e.target.value)}
             className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+            disabled={sessionStats?.pending > 0}
           />
         </div>
         <button
           onClick={handleFinalize}
-          className="w-full bg-green-600 text-white py-3 rounded-lg text-sm font-semibold"
+          className={`w-full py-3 rounded-lg text-sm font-semibold ${
+            sessionStats?.pending > 0 ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-green-600 text-white'
+          }`}
+          disabled={sessionStats?.pending > 0}
         >
           Finalizar Rota
         </button>

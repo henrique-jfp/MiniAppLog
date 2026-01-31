@@ -1,12 +1,28 @@
-import React, { useState, useRef } from 'react';
-import { FileUp, List, Sparkles, MapPin, AlertCircle } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { FileUp, List, Sparkles, MapPin, AlertCircle, Users, Send, Map } from 'lucide-react';
 
 export default function RouteAnalysisView() {
   const [file, setFile] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [routeValue, setRouteValue] = useState('');
+  const [minimapUrl, setMinimapUrl] = useState(null);
+  const [deliverers, setDeliverers] = useState([]);
+  const [numDeliverers, setNumDeliverers] = useState(2);
+  const [routes, setRoutes] = useState([]);
+  const [assignments, setAssignments] = useState({});
+  const [combinedMapUrl, setCombinedMapUrl] = useState(null);
+  const [finalizeRevenue, setFinalizeRevenue] = useState('');
+  const [finalizeCosts, setFinalizeCosts] = useState('');
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    fetch('/api/admin/team')
+      .then(r => r.json())
+      .then(setDeliverers)
+      .catch(() => setDeliverers([]));
+  }, []);
 
   const handleFileChange = (e) => {
     if (e.target.files.length > 0) {
@@ -24,6 +40,7 @@ export default function RouteAnalysisView() {
 
     const formData = new FormData();
     formData.append('file', file);
+    if (routeValue) formData.append('route_value', routeValue);
 
     try {
       const res = await fetch('/api/route/analyze', {
@@ -38,6 +55,147 @@ export default function RouteAnalysisView() {
 
       const data = await res.json();
       setAnalysis(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveRouteValue = async () => {
+    if (!routeValue) return;
+    try {
+      await fetch('/api/session/route-value', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: parseFloat(routeValue) })
+      });
+    } catch (err) {
+      setError('Erro ao salvar valor da rota');
+    }
+  };
+
+  const handleImport = async () => {
+    if (!file) return;
+
+    setLoading(true);
+    setError(null);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/session/romaneio/import', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || 'Falha ao importar romaneio');
+      }
+
+      const data = await res.json();
+      setMinimapUrl(data.minimap_url || null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOptimize = async () => {
+    setLoading(true);
+    setError(null);
+    setRoutes([]);
+    setCombinedMapUrl(null);
+
+    try {
+      const res = await fetch('/api/routes/optimize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ num_deliverers: Number(numDeliverers) })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || 'Falha ao otimizar rotas');
+      }
+
+      const data = await res.json();
+      setRoutes(data.routes || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAssign = async (routeId, delivererId) => {
+    try {
+      const res = await fetch('/api/routes/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ route_id: routeId, deliverer_id: Number(delivererId) })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || 'Falha ao atribuir');
+      }
+
+      setAssignments(prev => ({ ...prev, [routeId]: delivererId }));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleSendRoutes = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/routes/send', { method: 'POST' });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || 'Falha ao enviar rotas');
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCombinedMap = async () => {
+    try {
+      const res = await fetch('/api/routes/combined-map');
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || 'Falha ao gerar mapa completo');
+      }
+      const data = await res.json();
+      setCombinedMapUrl(data.map_url || null);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleFinalize = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/session/finalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          revenue: finalizeRevenue ? parseFloat(finalizeRevenue) : undefined,
+          other_costs: finalizeCosts ? parseFloat(finalizeCosts) : 0
+        })
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || 'Falha ao finalizar sessão');
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -84,17 +242,57 @@ export default function RouteAnalysisView() {
           )}
         </div>
 
-        <button 
-          onClick={handleAnalyze}
-          disabled={!file || loading}
-          className={`mt-4 w-full py-3 rounded-xl font-bold text-white shadow-lg transition-all ${
-            loading 
-              ? 'bg-gray-400 cursor-not-allowed' 
-              : 'bg-purple-600 hover:bg-purple-700 shadow-purple-500/30'
-          }`}
-        >
-          {loading ? 'Analisando com IA...' : 'Analisar Agora'}
-        </button>
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          <input
+            type="number"
+            placeholder="Valor total da rota"
+            value={routeValue}
+            onChange={(e) => setRouteValue(e.target.value)}
+            className="col-span-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+          />
+          <button
+            onClick={handleSaveRouteValue}
+            className="bg-gray-900 text-white rounded-lg text-sm font-semibold"
+          >
+            Salvar
+          </button>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <button 
+            onClick={handleAnalyze}
+            disabled={!file || loading}
+            className={`py-3 rounded-xl font-bold text-white shadow-lg transition-all ${
+              loading 
+                ? 'bg-gray-400 cursor-not-allowed' 
+                : 'bg-purple-600 hover:bg-purple-700 shadow-purple-500/30'
+            }`}
+          >
+            {loading ? 'Analisando...' : 'Analisar IA'}
+          </button>
+          <button 
+            onClick={handleImport}
+            disabled={!file || loading}
+            className={`py-3 rounded-xl font-bold text-white shadow-lg transition-all ${
+              loading 
+                ? 'bg-gray-400 cursor-not-allowed' 
+                : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/30'
+            }`}
+          >
+            {loading ? 'Importando...' : 'Importar Romaneio'}
+          </button>
+        </div>
+
+        {minimapUrl && (
+          <a 
+            href={minimapUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-4 inline-flex items-center gap-2 text-sm text-blue-600"
+          >
+            <Map size={16} /> Ver minimapa completo
+          </a>
+        )}
 
         {error && (
           <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300 rounded-xl flex items-center gap-3 text-sm">
@@ -102,6 +300,110 @@ export default function RouteAnalysisView() {
             {error}
           </div>
         )}
+      </div>
+
+      {/* Otimização e distribuição */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+        <h3 className="font-bold flex items-center gap-2">
+          <Users size={18} className="text-indigo-500" /> Otimizar e Distribuir
+        </h3>
+
+        <div className="grid grid-cols-3 gap-2">
+          <input
+            type="number"
+            min={1}
+            value={numDeliverers}
+            onChange={(e) => setNumDeliverers(e.target.value)}
+            className="col-span-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+          />
+          <button
+            onClick={handleOptimize}
+            className="bg-indigo-600 text-white rounded-lg text-sm font-semibold"
+          >
+            Otimizar
+          </button>
+        </div>
+
+        {routes.length > 0 && (
+          <div className="space-y-3">
+            {routes.map((r) => (
+              <div key={r.route_id} className="p-3 rounded-lg border border-gray-200 dark:border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold">{r.route_id}</p>
+                    <p className="text-xs text-gray-500">{r.total_packages} pacotes</p>
+                  </div>
+                  <a href={r.map_url} target="_blank" rel="noreferrer" className="text-sm text-blue-600">Mapa</a>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <select
+                    value={assignments[r.route_id] || ''}
+                    onChange={(e) => handleAssign(r.route_id, e.target.value)}
+                    className="px-2 py-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+                  >
+                    <option value="">Selecionar entregador</option>
+                    {deliverers.map((d) => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleSendRoutes}
+                    className="bg-emerald-600 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2"
+                  >
+                    <Send size={14} /> Enviar
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button
+          onClick={handleCombinedMap}
+          className="w-full bg-gray-900 text-white py-3 rounded-lg text-sm font-semibold"
+        >
+          Gerar mapa completo colorido
+        </button>
+
+        {combinedMapUrl && (
+          <a 
+            href={combinedMapUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 text-sm text-blue-600"
+          >
+            <Map size={16} /> Ver mapa completo
+          </a>
+        )}
+      </div>
+
+      {/* Fechamento */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+        <h3 className="font-bold flex items-center gap-2">
+          <List size={18} className="text-green-500" /> Fechar Dia
+        </h3>
+        <div className="grid grid-cols-2 gap-2">
+          <input
+            type="number"
+            placeholder="Receita total"
+            value={finalizeRevenue}
+            onChange={(e) => setFinalizeRevenue(e.target.value)}
+            className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+          />
+          <input
+            type="number"
+            placeholder="Custos extras"
+            value={finalizeCosts}
+            onChange={(e) => setFinalizeCosts(e.target.value)}
+            className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+          />
+        </div>
+        <button
+          onClick={handleFinalize}
+          className="w-full bg-green-600 text-white py-3 rounded-lg text-sm font-semibold"
+        >
+          Finalizar Rota
+        </button>
       </div>
 
       {/* Results */}

@@ -91,27 +91,24 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /start"""
     user_id = update.effective_user.id
     
+    # Imagem de Capa
+    START_IMAGE = "https://img.freepik.com/free-vector/delivery-service-illustrated_23-2148505081.jpg"
+    
     if user_id == BotConfig.ADMIN_TELEGRAM_ID:
         keyboard = [
-            [KeyboardButton("🚀 ABRIR MINI APP", web_app=WebAppInfo(url=BotConfig.WEBAPP_URL))],
-            [KeyboardButton("[PACOTE] Nova Sessão do Dia")],
-            [KeyboardButton("[GRAFICO] Status Atual"), KeyboardButton("[DINHEIRO] Relatório Financeiro")],
-            [KeyboardButton("[PESSOAS] Entregadores"), KeyboardButton("🏆 Ranking")],
+            [InlineKeyboardButton("🚀 ABRIR GESTÃO (MINI APP)", web_app=WebAppInfo(url=BotConfig.WEBAPP_URL))]
         ]
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        await update.message.reply_text(
-            "📱 <b>[MINI APP] SISTEMA HYBRID v3.0</b>\n"
-            "---\n\n"
-            "🔥 <b>O FUTURO CHEGOU, CHEFE!</b>\n"
-            "Agora temos um frontend React rodando DENTRO do Telegram.\n\n"
-            "👇 <b>CLIQUE NO BOTÃO 'ABRIR MINI APP' ABAIXO</b>\n"
-            "Pra ver o Dashboard, Mapas e Gestão em tempo real!\n\n"
-            "<b>💻 COMANDOS CLÁSSICOS:</b>\n"
-            "1️⃣ <code>/importar</code> - Upload de arquivos\n"
-            "2️⃣ <code>/otimizar</code> - Processamento\n"
-            "3️⃣ <code>/entregadores</code> - Gestão de equipe\n\n"
-            "---\n"
-            "[FIRE] <i>Hacker Mode Activated</i>",
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_photo(
+            photo=START_IMAGE,
+            caption=(
+                "📱 <b>SISTEMA HYBRID v3.0</b>\n"
+                "---\n\n"
+                "🔥 <b>O FUTURO CHEGOU, CHEFE!</b>\n"
+                "Gerencie todo o fluxo logístico pelo nosso novo App integrado.\n\n"
+                "👇 <b>Clique abaixo para abrir o painel</b>"
+            ),
             parse_mode='HTML',
             reply_markup=reply_markup
         )
@@ -120,23 +117,21 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         partner = BotConfig.get_partner_by_id(user_id)
         if partner:
             keyboard = [
-                [KeyboardButton("📦 MEU PAINEL DE ENTREGAS", web_app=WebAppInfo(url=BotConfig.WEBAPP_URL))],
-                [KeyboardButton("[MAPA] Minha Rota Hoje")],
-                [KeyboardButton("[OK] Marcar Entrega"), KeyboardButton("[X] Reportar Problema")]
+                [InlineKeyboardButton("📦 ABRIR MEU PAINEL", web_app=WebAppInfo(url=BotConfig.WEBAPP_URL))]
             ]
-            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            reply_markup = InlineKeyboardMarkup(keyboard)
             
-            tipo = "[SOCIO] PARCEIRO" if partner.is_partner else "[COLAB] COLABORADOR"
+            tipo = "SOCIO" if partner.is_partner else "COLABORADOR"
             
-            await update.message.reply_text(
-                f"🏍️ <b>E AÍ, {partner.name.upper()}!</b>\n"
-                f"---\n\n"
-                f"📛 Status: {tipo}\n"
-                f"👇 <b>Use o botão 'MEU PAINEL' para ver sua rota!</b>\n\n"
-                f"[PACOTE] Capacidade: {partner.max_capacity} pacotes/dia\n"
-                f"[DINHEIRO] Ganho: R$ {partner.cost_per_package:.2f}/pacote\n\n"
-                f"---\n"
-                f"[ROCKET] <i>Bora faturar!</i>",
+            await update.message.reply_photo(
+                photo=START_IMAGE,
+                caption=(
+                    f"🏍️ <b>BEM-VINDO, {partner.name.upper()}!</b>\n"
+                    f"---\n\n"
+                    f"📛 <b>Status:</b> {tipo}\n"
+                    f"💰 <b>Ganho:</b> R$ {partner.cost_per_package:.2f}/pacote\n\n"
+                    f"👇 <b>Acesse seu App de Entregas abaixo:</b>"
+                ),
                 parse_mode='HTML',
                 reply_markup=reply_markup
             )
@@ -4912,38 +4907,36 @@ async def _execute_route_distribution(update: Update, context: ContextTypes.DEFA
             
             # Envia pro entregador
             try:
+                # Nova mensagem VISUAL com botão para o Mini App
+                ROUTE_IMAGE = "https://img.freepik.com/free-vector/gps-navigation-concept_23-2148509598.jpg"
+                
+                keyboard_route = [
+                    [InlineKeyboardButton("📦 ABRIR ROTA NO APP", web_app=WebAppInfo(url=BotConfig.WEBAPP_URL))]
+                ]
+                reply_markup_route = InlineKeyboardMarkup(keyboard_route)
+
                 msg = (
-                    f"{color_emoji} <b>SUA ROTA DO DIA ESTÁ PRONTA!</b>\n"
+                    f"{color_emoji} <b>NOVA ROTA DISPONÍVEL!</b>\n"
                     f"---\n\n"
-                    f"[COR] <b>COR DA SUA ROTA: {color_emoji} {route_color.upper() if route_color else 'Sem cor'}</b>\n\n"
-                    f"[PACOTE] <b>RESUMO:</b>\n"
+                    f"[PACOTE] <b>Resumo da Carga:</b>\n"
                     f"- Pacotes: <b>{route.total_packages}</b>\n"
-                    f"- Paradas: <b>{len(route.stops)}</b>\n"
                     f"- Distância: <b>{route.total_distance_km:.1f} km</b>\n"
-                    f"- Tempo: <b>{route.total_time_minutes:.0f} min</b>\n"
-                    f"- Atalhos: <b>{route.shortcuts}</b> [RAPIDO]\n\n"
-                    f"[ALVO] <b>INÍCIO:</b>\n{route.start_point[2][:60]}\n\n"
-                    f"[FIM] <b>FIM:</b>\n{route.end_point[2][:60]}\n\n"
-                    f"---\n\n"
-                    f"[MAPA] Baixe o <b>mapa HTML</b> abaixo!\n"
-                    f"[FIRE] Abra no navegador e siga os pins!\n\n"
-                    f"<i>Boa sorte, parceiro! [ROCKET]</i>"
+                    f"- Tempo Est.: <b>{route.total_time_minutes:.0f} min</b>\n\n"
+                    f"👇 <b>Toque abaixo para iniciar a navegação!</b>"
                 )
                 
-                await context.bot.send_message(
+                await context.bot.send_photo(
                     chat_id=route.entregador_id,
-                    text=msg,
-                    parse_mode='HTML'
+                    photo=ROUTE_IMAGE,
+                    caption=msg,
+                    parse_mode='HTML',
+                    reply_markup=reply_markup_route
                 )
                 
-                # Envia arquivo HTML
-                with open(map_file, 'rb') as f:
-                    await context.bot.send_document(
-                        chat_id=route.entregador_id,
-                        document=f,
-                        filename=f"rota_{route.entregador_nome.replace(' ', '_')}.html",
-                        caption=f"{color_emoji} Rota {route_color.upper() if route_color else ''} - Abra no navegador!"
-                    )
+                # [OPCIONAL] Mantendo o arquivo HTML em background por segurança
+                # Se quiser remover totalmente, é só comentar as linhas abaixo
+                # with open(map_file, 'rb') as f:
+                #     await context.bot.send_document(...)
                 
             except Exception as e:
                 logger.error(f"Erro enviando rota para {route.entregador_id}: {e}")

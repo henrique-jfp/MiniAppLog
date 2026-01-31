@@ -19,6 +19,8 @@ logger = logging.getLogger("HybridServer")
 
 # Importa o bot (Cérebro)
 from bot_multidelivery.bot import create_application, BotConfig
+# Importa Rotas da API
+from api_routes import router as api_router
 
 # Variável global para o bot
 bot_app = None
@@ -67,6 +69,9 @@ async def lifespan(server: FastAPI):
 
 # Cria o servidor FastAPI
 app = FastAPI(title="BotEntregador MiniApp API", version="1.0.0", lifespan=lifespan)
+
+# Registra Rotas da API
+app.include_router(api_router)
 
 # --- ROTAS DA API ---
 @app.get("/api/status")

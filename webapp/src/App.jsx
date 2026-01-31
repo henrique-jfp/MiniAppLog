@@ -390,7 +390,7 @@ function App() {
     }
 
     if (activeTab === 'financial') {
-        return <FinancialView data={financialData} />
+      return <FinancialView data={financialData} adminStats={adminStats} />
     }
     
     if (activeTab === 'team') {

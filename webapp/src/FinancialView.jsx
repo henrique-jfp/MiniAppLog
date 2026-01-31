@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { TrendingUp, TrendingDown, DollarSign, Wallet, Calendar, CreditCard, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 
-export default function FinancialView({ data }) {
+export default function FinancialView({ data, adminStats }) {
   if (!data) {
     return (
       <div className="space-y-4 animate-fade-in">
@@ -17,7 +17,7 @@ export default function FinancialView({ data }) {
   }
 
   if (data.view === 'company') {
-    return <CompanyFinancialView data={data} />;
+    return <CompanyFinancialView data={data} adminStats={adminStats} />;
   }
 
   return <div>Tipo de visualização desconhecido.</div>;
@@ -116,10 +116,39 @@ function PersonalFinancialView({ data }) {
   );
 }
 
-function CompanyFinancialView({ data }) {
+function CompanyFinancialView({ data, adminStats }) {
   const { revenue, costs, profit } = data.company_stats;
+  const [extraRevenue, setExtraRevenue] = useState('');
+  const [extraCosts, setExtraCosts] = useState('');
+  const [closing, setClosing] = useState(false);
+  const [closeMsg, setCloseMsg] = useState(null);
   const profitFormatted = profit.toFixed(2).replace('.', ',')
   const profitIsPositive = profit >= 0
+  const canClose = adminStats?.active_session && adminStats?.pending === 0;
+
+  const handleCloseDay = async () => {
+    setClosing(true);
+    setCloseMsg(null);
+    try {
+      const res = await fetch('/api/session/finalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          extra_revenue: extraRevenue ? parseFloat(extraRevenue) : 0,
+          other_costs: extraCosts ? parseFloat(extraCosts) : 0
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Falha ao fechar dia');
+
+      setCloseMsg('✅ Dia fechado com sucesso.');
+    } catch (err) {
+      setCloseMsg(err.message);
+    } finally {
+      setClosing(false);
+    }
+  };
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -203,6 +232,41 @@ function CompanyFinancialView({ data }) {
           )}
         </div>
       </div>
+
+      {canClose && (
+        <div className="card-premium p-5 space-y-3">
+          <h3 className="font-bold text-gray-900 dark:text-white">✅ Fechar Dia</h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Todos os pacotes foram finalizados. Informe custos e lucros extras para fechar a sessão.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              type="number"
+              placeholder="Lucro extra"
+              value={extraRevenue}
+              onChange={(e) => setExtraRevenue(e.target.value)}
+              className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+            />
+            <input
+              type="number"
+              placeholder="Custos extras"
+              value={extraCosts}
+              onChange={(e) => setExtraCosts(e.target.value)}
+              className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+            />
+          </div>
+          <button
+            onClick={handleCloseDay}
+            disabled={closing}
+            className={`w-full py-3 rounded-lg text-sm font-semibold ${closing ? 'bg-gray-400 text-white' : 'bg-emerald-600 text-white'}`}
+          >
+            {closing ? 'Fechando...' : 'Fechar Dia'}
+          </button>
+          {closeMsg && (
+            <div className="text-sm text-gray-600 dark:text-gray-300">{closeMsg}</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

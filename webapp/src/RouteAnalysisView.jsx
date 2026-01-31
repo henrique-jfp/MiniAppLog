@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileUp, List, Sparkles, MapPin, AlertCircle, Users, Send, Map, TrendingUp, Building2, Home } from 'lucide-react';
+import { FileUp, Sparkles, MapPin, AlertCircle, Users, Send, Map } from 'lucide-react';
 
 export default function RouteAnalysisView() {
   const [file, setFile] = useState(null);
@@ -9,13 +9,14 @@ export default function RouteAnalysisView() {
   const [routeValue, setRouteValue] = useState('');
   const [minimapUrl, setMinimapUrl] = useState(null);
   const [deliverers, setDeliverers] = useState([]);
+  const [viewMode, setViewMode] = useState('analysis');
+  const [hasRomaneio, setHasRomaneio] = useState(false);
+  const [sessionId, setSessionId] = useState(null);
   const [sessionStats, setSessionStats] = useState(null);
   const [numDeliverers, setNumDeliverers] = useState(2);
   const [routes, setRoutes] = useState([]);
   const [assignments, setAssignments] = useState({});
   const [combinedMapUrl, setCombinedMapUrl] = useState(null);
-  const [finalizeRevenue, setFinalizeRevenue] = useState('');
-  const [finalizeCosts, setFinalizeCosts] = useState('');
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -23,11 +24,6 @@ export default function RouteAnalysisView() {
       .then(r => r.json())
       .then(setDeliverers)
       .catch(() => setDeliverers([]));
-
-    fetch('/api/admin/stats')
-      .then(r => r.json())
-      .then(setSessionStats)
-      .catch(() => setSessionStats(null));
   }, []);
 
   const handleFileChange = (e) => {
@@ -85,8 +81,7 @@ export default function RouteAnalysisView() {
   };
 
   const handleImport = async () => {
-      {/* Resultado da Análise */}
-    if (!file) return;
+    if (!file || !routeValue) return;
 
     setLoading(true);
     setError(null);
@@ -107,7 +102,58 @@ export default function RouteAnalysisView() {
 
       const data = await res.json();
       setMinimapUrl(data.minimap_url || null);
+      setHasRomaneio(true);
+      if (data.session_id) setSessionId(data.session_id);
 
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleImportAdditional = async () => {
+    if (!file || !routeValue || !hasRomaneio) return;
+
+    setLoading(true);
+    setError(null);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/session/romaneio/import-additional', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || 'Falha ao importar romaneio adicional');
+      }
+
+      const data = await res.json();
+      setMinimapUrl(data.minimap_url || null);
+      if (data.session_id) setSessionId(data.session_id);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSessionReport = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/session/report');
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || 'Falha ao gerar relatório');
+      }
+      const data = await res.json();
+      setAnalysis(data);
+      if (data.minimap_url) setMinimapUrl(data.minimap_url);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -163,7 +209,12 @@ export default function RouteAnalysisView() {
     }
   };
 
-  const handleSendRoutes = async () => {
+  const handleStartRoutes = async () => {
+    const allAssigned = routes.length > 0 && routes.every(r => assignments[r.route_id]);
+    if (!allAssigned) {
+      setError('Selecione um entregador para cada rota antes de iniciar.');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -195,33 +246,7 @@ export default function RouteAnalysisView() {
     }
   };
 
-  const handleFinalize = async () => {
-    if (sessionStats?.pending > 0) {
-      setError(`Ainda existem ${sessionStats.pending} pacotes pendentes. Finalize todas as entregas antes de fechar a rota.`);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/session/finalize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          revenue: finalizeRevenue ? parseFloat(finalizeRevenue) : undefined,
-          other_costs: finalizeCosts ? parseFloat(finalizeCosts) : 0
-        })
-      });
-      if (!res.ok) {
-        const errData = await res.json();
-
-        throw new Error(errData.detail || 'Falha ao finalizar sessão');
-      }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const allAssigned = routes.length > 0 && routes.every((r) => assignments[r.route_id]);
 
   return (
     <div className="space-y-6 animate-fade-in pb-20">
@@ -234,6 +259,22 @@ export default function RouteAnalysisView() {
         <p className="text-sm text-gray-500">
           Envie o romaneio da Shopee (.xlsx) para inteligência verificar se vale a pena.
         </p>
+      </div>
+
+      {/* Abas */}
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={() => setViewMode('analysis')}
+          className={`py-3 rounded-xl font-bold text-sm ${viewMode === 'analysis' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-100 dark:border-gray-700'}`}
+        >
+          Analisar Rota
+        </button>
+        <button
+          onClick={() => setViewMode('import')}
+          className={`py-3 rounded-xl font-bold text-sm ${viewMode === 'import' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-100 dark:border-gray-700'}`}
+        >
+          Importar Romaneio
+        </button>
       </div>
 
       {/* Upload Area */}
@@ -279,30 +320,60 @@ export default function RouteAnalysisView() {
           </button>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-3">
+        {viewMode === 'analysis' ? (
+          <div className="mt-4">
+            <button 
+              onClick={handleAnalyze}
+              disabled={!file || loading}
+              className={`w-full py-3 rounded-xl font-bold text-white shadow-lg transition-all ${
+                loading 
+                  ? 'bg-gray-400 cursor-not-allowed' 
+                  : 'bg-purple-600 hover:bg-purple-700 shadow-purple-500/30'
+              }`}
+            >
+              {loading ? 'Analisando...' : 'Analisar IA'}
+            </button>
+          </div>
+        ) : (
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <button 
+              onClick={handleImport}
+              disabled={!file || loading || !routeValue}
+              className={`py-3 rounded-xl font-bold text-white shadow-lg transition-all ${
+                loading || !routeValue
+                  ? 'bg-gray-400 cursor-not-allowed' 
+                  : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/30'
+              }`}
+            >
+              {loading ? 'Importando...' : 'Importar Romaneio'}
+            </button>
+            <button 
+              onClick={handleSessionReport}
+              disabled={loading || !hasRomaneio}
+              className={`py-3 rounded-xl font-bold text-white shadow-lg transition-all ${
+                loading || !hasRomaneio
+                  ? 'bg-gray-400 cursor-not-allowed' 
+                  : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/30'
+              }`}
+            >
+              Gerar Relatório
+            </button>
+          </div>
+        )}
+
+        {viewMode === 'import' && hasRomaneio && (
           <button 
-            onClick={handleAnalyze}
+            onClick={handleImportAdditional}
             disabled={!file || loading}
-            className={`py-3 rounded-xl font-bold text-white shadow-lg transition-all ${
-              loading 
+            className={`mt-3 w-full py-3 rounded-xl font-bold text-white shadow-lg transition-all ${
+              loading || !file
                 ? 'bg-gray-400 cursor-not-allowed' 
-                : 'bg-purple-600 hover:bg-purple-700 shadow-purple-500/30'
+                : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/30'
             }`}
           >
-            {loading ? 'Analisando...' : 'Analisar IA'}
+            Importar Outro Romaneio
           </button>
-          <button 
-            onClick={handleImport}
-            disabled={!file || loading}
-            className={`py-3 rounded-xl font-bold text-white shadow-lg transition-all ${
-              loading 
-                ? 'bg-gray-400 cursor-not-allowed' 
-                : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/30'
-            }`}
-          >
-            {loading ? 'Importando...' : 'Importar Romaneio'}
-          </button>
-        </div>
+        )}
 
         {minimapUrl && (
           <a 
@@ -324,6 +395,7 @@ export default function RouteAnalysisView() {
       </div>
 
       {/* Otimização e distribuição */}
+      {viewMode === 'import' && (
       <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
         <h3 className="font-bold flex items-center gap-2">
           <Users size={18} className="text-indigo-500" /> Otimizar e Distribuir
@@ -339,7 +411,10 @@ export default function RouteAnalysisView() {
           />
           <button
             onClick={handleOptimize}
-            className="bg-indigo-600 text-white rounded-lg text-sm font-semibold"
+            disabled={!hasRomaneio || !routeValue}
+            className={`rounded-lg text-sm font-semibold ${
+              !hasRomaneio || !routeValue ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-indigo-600 text-white'
+            }`}
           >
             Otimizar
           </button>
@@ -364,7 +439,7 @@ export default function RouteAnalysisView() {
                   </div>
                   <a href={r.map_url} target="_blank" rel="noreferrer" className="text-sm text-blue-600">Mapa</a>
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className="mt-3">
                   <select
                     value={assignments[r.route_id] || ''}
                     onChange={(e) => handleAssign(r.route_id, e.target.value)}
@@ -375,15 +450,25 @@ export default function RouteAnalysisView() {
                       <option key={d.id} value={d.id}>{d.name}</option>
                     ))}
                   </select>
-                  <button
-                    onClick={handleSendRoutes}
-                    className="bg-emerald-600 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2"
-                  >
-                    <Send size={14} /> Enviar
-                  </button>
                 </div>
               </div>
             ))}
+
+            {!allAssigned && (
+              <div className="text-sm text-red-600 dark:text-red-400">
+                Selecione um entregador para cada rota antes de iniciar.
+              </div>
+            )}
+
+            <button
+              onClick={handleStartRoutes}
+              disabled={!allAssigned}
+              className={`w-full py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 ${
+                allAssigned ? 'bg-emerald-600 text-white' : 'bg-gray-400 text-white cursor-not-allowed'
+              }`}
+            >
+              <Send size={14} /> Iniciar Rota (Enviar para Entregadores)
+            </button>
           </div>
         )}
 
@@ -405,45 +490,7 @@ export default function RouteAnalysisView() {
           </a>
         )}
       </div>
-
-      {/* Fechamento */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
-        <h3 className="font-bold flex items-center gap-2">
-          <List size={18} className="text-green-500" /> Fechar Dia
-        </h3>
-        {sessionStats?.pending > 0 && (
-          <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
-            Ainda existem {sessionStats.pending} pacotes pendentes. Finalize todas as entregas (entregue ou insucesso) para liberar o fechamento.
-          </div>
-        )}
-        <div className="grid grid-cols-2 gap-2">
-          <input
-            type="number"
-            placeholder="Receita total"
-            value={finalizeRevenue}
-            onChange={(e) => setFinalizeRevenue(e.target.value)}
-            className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
-            disabled={sessionStats?.pending > 0}
-          />
-          <input
-            type="number"
-            placeholder="Custos extras"
-            value={finalizeCosts}
-            onChange={(e) => setFinalizeCosts(e.target.value)}
-            className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
-            disabled={sessionStats?.pending > 0}
-          />
-        </div>
-        <button
-          onClick={handleFinalize}
-          className={`w-full py-3 rounded-lg text-sm font-semibold ${
-            sessionStats?.pending > 0 ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-green-600 text-white'
-          }`}
-          disabled={sessionStats?.pending > 0}
-        >
-          Finalizar Rota
-        </button>
-      </div>
+      )}
 
       {/* Results */}
       {analysis && (

@@ -8,7 +8,7 @@ from typing import Optional, List, Dict
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from telegram import Bot
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from bot_multidelivery.config import BotConfig
 from bot_multidelivery.session import session_manager, Romaneio, Route
 from bot_multidelivery.persistence import data_store
@@ -58,6 +58,7 @@ class AssignRouteInput(BaseModel):
 class FinalizeSessionInput(BaseModel):
     session_id: Optional[str] = None
     revenue: Optional[float] = None
+    extra_revenue: float = 0.0
     other_costs: float = 0.0
     expenses: Optional[List[Dict[str, object]]] = None
 
@@ -500,6 +501,81 @@ async def import_romaneio_alt(file: UploadFile = File(...), session_id: Optional
     """Endpoint alternativo de importação (evita conflitos 405)"""
     return _process_romaneio_import(file, session_id)
 
+@router.get("/session/report")
+async def get_session_report(session_id: Optional[str] = None):
+    """Gera relatório da sessão atual (todos os romaneios) com minimapa"""
+    session = session_manager.get_session(session_id) if session_id else session_manager.get_current_session()
+    if not session or not session.romaneios:
+        raise HTTPException(status_code=400, detail="Nenhum romaneio importado na sessão.")
+
+    analyzer_input = []
+    for rom in session.romaneios:
+        for p in rom.points:
+            analyzer_input.append({
+                'address': p.address,
+                'bairro': '',
+                'lat': p.lat,
+                'lon': p.lng,
+                'stop': p.address
+            })
+
+    analyzer = RouteAnalyzer()
+    route_value = getattr(session, "route_value", 0.0)
+    result = analyzer.analyze_route(analyzer_input, route_value=route_value)
+
+    map_url = None
+    base_loc = (session.base_lat, session.base_lng, session.base_address) if session.base_lat and session.base_lng else None
+    stops = [(d['lat'], d['lon'], d['address'], 1, 'pending') for d in analyzer_input if d.get('lat') and d.get('lon')]
+    if stops:
+        html = MapGenerator.generate_interactive_map(
+            stops=stops,
+            entregador_nome=f"Minimapa Sessão - {len(stops)} pacotes",
+            current_stop=-1,
+            total_packages=len(stops),
+            total_distance_km=0,
+            total_time_min=0,
+            base_location=base_loc
+        )
+        filename = f"minimap_session_report_{session.session_id}.html"
+        MapGenerator.save_map(html, _safe_map_path(filename))
+        map_url = f"/api/maps/{filename}"
+
+    from dataclasses import asdict
+    analysis_dict = asdict(result)
+    analysis_dict['formatted'] = {
+        'header': {
+            'value': f"💰 R$ {result.route_value:.2f}" if result.route_value > 0 else "Sem valor informado",
+            'type': result.route_type,
+            'score': result.overall_score,
+            'recommendation': result.recommendation
+        },
+        'earnings': {
+            'hourly': f"R$ {result.hourly_earnings:.2f}/hora" if result.hourly_earnings > 0 else "N/A",
+            'package': f"R$ {result.package_earnings:.2f}/pacote" if result.package_earnings > 0 else "N/A",
+            'time_estimate': f"{result.estimated_time_minutes:.0f} min ({result.estimated_time_minutes/60:.1f}h)"
+        },
+        'top_drops': [
+            {'street': street, 'count': count, 'emoji': '🔥' if i == 0 else '✨' if i == 1 else '⭐'}
+            for i, (street, count) in enumerate(result.top_drops or [])
+        ],
+        'profile': {
+            'commercial': result.commercial_count,
+            'vertical': result.vertical_count,
+            'residential': result.total_packages - result.commercial_count - result.vertical_count,
+            'type_label': result.route_type
+        },
+        'concentration': {
+            'density': f"{result.density_score:.1f} pacotes/km²",
+            'area': f"{result.area_coverage_km2:.2f} km²",
+            'neighborhoods': result.unique_neighborhoods,
+            'score': f"{result.concentration_score:.1f}/10"
+        }
+    }
+    if map_url:
+        analysis_dict['minimap_url'] = map_url
+
+    return analysis_dict
+
 @router.post("/routes/optimize")
 async def optimize_routes(data: OptimizeInput):
     """Divide e otimiza a rota pela quantidade de entregadores"""
@@ -592,50 +668,57 @@ async def send_routes(session_id: Optional[str] = Form(None)):
     if not session:
         raise HTTPException(status_code=404, detail="Nenhuma sessão ativa")
 
+    if not session.routes or any(not r.assigned_to_telegram_id for r in session.routes):
+        raise HTTPException(status_code=400, detail="Atribua um entregador para cada rota antes de iniciar.")
+
+    if not getattr(session, "separation_completed", False):
+        raise HTTPException(status_code=400, detail="Finalize o modo separação antes de iniciar a rota.")
+
     bot = _get_bot()
     if not bot:
         raise HTTPException(status_code=500, detail="Token do bot não configurado")
 
     sent = []
     base_loc = (session.base_lat, session.base_lng, session.base_address) if session.base_lat and session.base_lng else None
+    photo_path = os.path.join('bot_multidelivery', 'static', 'logoMiniApp.jpg')
 
     for route in session.routes:
         if not route.assigned_to_telegram_id:
             continue
 
-        if not route.map_file:
-            stops_data = [(p.lat, p.lng, p.address, 1, 'pending') for p in route.optimized_order]
-            eta_minutes = max(10, route.total_distance_km / 25 * 60 + len(route.optimized_order) * 3)
-            html = MapGenerator.generate_interactive_map(
-                stops=stops_data,
-                entregador_nome=route.assigned_to_name or route.id,
-                current_stop=0,
-                total_packages=route.total_packages,
-                total_distance_km=route.total_distance_km,
-                total_time_min=eta_minutes,
-                base_location=base_loc,
-                session_id=session.session_id,
-                entregador_id=str(route.assigned_to_telegram_id)
-            )
-            filename = f"route_{session.session_id}_{route.id}.html"
-            MapGenerator.save_map(html, _safe_map_path(filename))
-            route.map_file = filename
+        deliverer = deliverer_service.get_deliverer(route.assigned_to_telegram_id)
+        route_url = f"{BotConfig.WEBAPP_URL}/?tab=routes"
+        admin_url = f"{BotConfig.WEBAPP_URL}/?tab=dashboard"
 
-        map_path = _safe_map_path(route.map_file)
-        if os.path.exists(map_path):
-            with open(map_path, 'rb') as f:
-                await bot.send_document(
+        buttons = [[InlineKeyboardButton("🗺️ Abrir Mapa", url=route_url)]]
+        if deliverer and deliverer.is_partner:
+            buttons[0].append(InlineKeyboardButton("🧠 Painel Admin", url=admin_url))
+
+        caption = (
+            f"🚚 Rota atribuída: {route.id}\n"
+            f"Pacotes: {route.total_packages}\n"
+            f"Cor: {route.color}\n"
+            f"Clique no botão abaixo para abrir sua rota no MiniApp."
+        )
+
+        if os.path.exists(photo_path):
+            with open(photo_path, 'rb') as photo:
+                await bot.send_photo(
                     chat_id=route.assigned_to_telegram_id,
-                    document=f,
-                    filename=route.map_file,
-                    caption=(
-                        f"📍 Rota atribuída: {route.id}\n"
-                        f"Pacotes: {route.total_packages}\n"
-                        f"Cor: {route.color}"
-                    )
+                    photo=photo,
+                    caption=caption,
+                    reply_markup=InlineKeyboardMarkup(buttons)
                 )
-            sent.append(route.id)
+        else:
+            await bot.send_message(
+                chat_id=route.assigned_to_telegram_id,
+                text=caption,
+                reply_markup=InlineKeyboardMarkup(buttons)
+            )
 
+        sent.append(route.id)
+
+    setattr(session, "started_at", datetime.now().isoformat())
     session_manager._auto_save(session)
     return {"status": "ok", "sent_routes": sent}
 
@@ -690,9 +773,14 @@ async def update_delivery_status(payload: dict):
         if not getattr(session, "all_delivered_notified", False):
             bot = _get_bot()
             if bot:
+                close_url = f"{BotConfig.WEBAPP_URL}/?tab=financial"
+                keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("✅ Fechar Dia", url=close_url)]
+                ])
                 await bot.send_message(
                     chat_id=BotConfig.ADMIN_TELEGRAM_ID,
-                    text=f"✅ Todas as entregas finalizadas na sessão {session.session_name} ({session.session_id})."
+                    text=f"✅ Sessão finalizada! Todas as entregas concluídas em {session.session_name}.\nClique abaixo para fechar o dia.",
+                    reply_markup=keyboard
                 )
             setattr(session, "all_delivered_notified", True)
             session_manager._auto_save(session)
@@ -714,6 +802,8 @@ async def finalize_session(data: FinalizeSessionInput):
 
     route_value = getattr(session, "route_value", None)
     revenue = data.revenue if data.revenue is not None else (route_value or 0.0)
+    if data.extra_revenue:
+        revenue += float(data.extra_revenue)
 
     deliverer_costs: Dict[str, float] = {}
     for route in session.routes:

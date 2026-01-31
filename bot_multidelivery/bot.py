@@ -3834,6 +3834,46 @@ async def cmd_financeiro(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+async def cmd_saldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /saldo - mostra saldo semanal do entregador"""
+    try:
+        import httpx
+        user_id = update.effective_user.id
+        url = f"{BotConfig.WEBAPP_URL}/api/financial/balance?user_id={user_id}"
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(url)
+
+        if resp.status_code != 200:
+            await update.message.reply_text("Não foi possível consultar seu saldo agora. Tente novamente.")
+            return
+
+        data = resp.json()
+        if data.get('view') == 'personal':
+            balance = data.get('balance', 0.0)
+            await update.message.reply_text(
+                f"💰 Seu saldo da semana: R$ {balance:.2f}\n"
+                f"Período: {data.get('period', 'Semana Atual')}",
+                parse_mode='HTML'
+            )
+            return
+
+        if data.get('view') == 'company':
+            company = data.get('company_stats', {})
+            await update.message.reply_text(
+                f"📊 Painel da Semana\n"
+                f"Receita: R$ {company.get('revenue', 0):.2f}\n"
+                f"Custos: R$ {company.get('costs', 0):.2f}\n"
+                f"Lucro: R$ {company.get('profit', 0):.2f}",
+                parse_mode='HTML'
+            )
+            return
+
+        await update.message.reply_text("Saldo indisponível para seu perfil.")
+    except Exception as e:
+        logger.error(f"Erro no /saldo: {e}")
+        await update.message.reply_text("Erro ao consultar saldo. Tente novamente.")
+
+
 async def cmd_fechar_semana(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Fecha a semana e divide lucros entre socios
     user_id = update.effective_user.id
@@ -5092,6 +5132,7 @@ def create_application():
     app.add_handler(CommandHandler("prever", cmd_predict_time))
     app.add_handler(CommandHandler("fechar_dia", cmd_fechar_dia))
     app.add_handler(CommandHandler("financeiro", cmd_financeiro))
+    app.add_handler(CommandHandler("saldo", cmd_saldo))
     app.add_handler(CommandHandler("fechar_semana", cmd_fechar_semana))
     app.add_handler(CommandHandler("config_socios", cmd_config_socios))
     app.add_handler(CommandHandler("faturamento", cmd_faturamento))

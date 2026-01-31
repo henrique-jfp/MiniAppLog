@@ -1283,10 +1283,30 @@ async def cmd_fechar_rota(update: Update, context: ContextTypes.DEFAULT_TYPE):
             optimized_order=optimized
         )
         # Gera mapa para preview/admin
+        # ===== AGRUPA PACOTES POR ENDEREÇO PARA EVITAR PULAR SEQUÊNCIA =====
+        stops_by_address = {}
+        for point in optimized:
+            addr_key = point.address.lower().strip()
+            if addr_key not in stops_by_address:
+                stops_by_address[addr_key] = {
+                    'lat': point.lat,
+                    'lng': point.lng,
+                    'address': point.address,
+                    'count': 0
+                }
+            stops_by_address[addr_key]['count'] += 1
+        
+        # Converte para lista com sequência correta (1, 2, 3, ... não 1, 2, 3, 6, 7, 10)
         stops_data = []
-        for i, point in enumerate(optimized):
+        for i, addr_data in enumerate(stops_by_address.values()):
             status = 'current' if i == 0 else 'pending'
-            stops_data.append((point.lat, point.lng, point.address, 1, status))
+            stops_data.append((
+                addr_data['lat'],
+                addr_data['lng'],
+                addr_data['address'],
+                addr_data['count'],  # ← Número CORRETO de pacotes nesta parada
+                status
+            ))
 
         eta_minutes = max(10, route.total_distance_km / 25 * 60 + len(optimized) * 3)
         base_loc = (session.base_lat, session.base_lng, session.base_address) if session.base_lat and session.base_lng else None

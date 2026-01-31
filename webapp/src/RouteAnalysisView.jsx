@@ -1,7 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileUp, Sparkles, MapPin, AlertCircle, Users, Send, Map, TrendingUp } from 'lucide-react';
+import { FileUp, Sparkles, MapPin, AlertCircle, Users, Send, Map, TrendingUp, Navigation } from 'lucide-react';
+import { useResponsive } from './hooks/useResponsive';
 
 export default function RouteAnalysisView() {
+  const responsive = useResponsive();
+  
   // ===== ANÁLISE SIMPLES (por lista de endereços) =====
   const [viewMode, setViewMode] = useState('simple');  // 'simple' ou 'import'
   
@@ -279,50 +282,51 @@ export default function RouteAnalysisView() {
 
   return (
     <div className="space-y-6 animate-fade-in pb-20">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-purple-600 to-blue-600 rounded-xl p-6 shadow-lg text-white">
-        <h2 className="text-2xl font-bold flex items-center gap-2 mb-2">
-          <Sparkles size={32} /> Análise de Rota com IA
+      {/* Header Premium */}
+      <div className={`rounded-3xl p-6 shadow-lg text-white bg-gradient-to-r from-purple-600 to-blue-600 ${responsive.isDesktop ? 'mb-8' : 'mb-5'}`}>
+        <h2 className={`font-bold flex items-center gap-2 mb-2 ${responsive.isDesktop ? 'text-3xl' : 'text-2xl'}`}>
+          <Sparkles size={responsive.isDesktop ? 36 : 32} /> Análise de Rota com IA
         </h2>
-        <p className="text-purple-100">
+        <p className={`${responsive.isDesktop ? 'text-base' : 'text-purple-100'} opacity-90`}>
           Cole endereços ou importe romaneio. A IA te diz se vale a pena.
         </p>
       </div>
 
       {/* Abas Principais */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className={`grid gap-3 ${responsive.isDesktop ? 'grid-cols-4' : 'grid-cols-2'}`}>
         <button
           onClick={() => setViewMode('simple')}
-          className={`py-3 px-4 rounded-xl font-bold text-sm transition-all ${
+          className={`${responsive.isDesktop ? 'py-4 px-6' : 'py-3 px-4'} rounded-xl font-bold transition-all flex items-center justify-center ${
             viewMode === 'simple'
               ? 'bg-purple-600 text-white shadow-lg scale-105'
-              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'
+              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
           }`}
         >
-          <Sparkles size={18} className="inline mr-2" />
-          Colar Endereços
+          <Sparkles size={responsive.isDesktop ? 20 : 18} className="mr-2" />
+          {responsive.isDesktop ? 'Análise Manual' : 'Colar'}
         </button>
         <button
           onClick={() => setViewMode('import')}
-          className={`py-3 px-4 rounded-xl font-bold text-sm transition-all ${
+          className={`${responsive.isDesktop ? 'py-4 px-6' : 'py-3 px-4'} rounded-xl font-bold transition-all flex items-center justify-center ${
             viewMode === 'import'
               ? 'bg-blue-600 text-white shadow-lg scale-105'
-              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'
+              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
           }`}
         >
-          <FileUp size={18} className="inline mr-2" />
-          Importar Romaneio
+          <FileUp size={responsive.isDesktop ? 20 : 18} className="mr-2" />
+          {responsive.isDesktop ? 'Importar Arquivo' : 'Importar'}
         </button>
       </div>
 
       {/* ERRO GLOBAL */}
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 flex gap-3">
-          <AlertCircle className="text-red-600 flex-shrink-0" />
-          <div>
-            <p className="font-bold text-red-800 dark:text-red-300">Erro</p>
-            <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
+        <div className={`bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 flex gap-3 ${responsive.isDesktop ? 'text-base' : 'text-sm'}`}>
+          <AlertCircle className="text-red-600 flex-shrink-0" size={responsive.isDesktop ? 24 : 20} />
+          <div className="flex-1">
+            <p className="font-bold text-red-800 dark:text-red-300">Erro detectado</p>
+            <p className="text-red-700 dark:text-red-400 mt-1">{error}</p>
           </div>
+          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">✕</button>
         </div>
       )}
 
@@ -330,9 +334,10 @@ export default function RouteAnalysisView() {
       {viewMode === 'simple' && (
         <div className="space-y-4">
           {/* Input Area */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
-              📝 Cola os Endereços (um por linha)
+          <div className={`bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 ${responsive.isDesktop ? 'p-6' : 'p-4'}`}>
+            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 flex justify-between">
+              <span>📝 Cola os Endereços (um por linha)</span>
+              <span className="text-xs font-normal text-gray-400">{addressesText.trim() ? addressesText.trim().split('\n').length : 0} linhas</span>
             </label>
             <textarea
               value={addressesText}
@@ -341,56 +346,53 @@ export default function RouteAnalysisView() {
 Rua Mena Barreto, 161, Loja BMRIO
 Rua General Polidoro, 322, 301
 ...`}
-              className="w-full h-48 p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-sm focus:ring-2 focus:ring-purple-500"
-            />
-            <p className="text-xs text-gray-500 mt-2">
-              {addressesText.trim().split('\n').length} endereço(s) detectado(s)
-            </p>
-          </div>
-
-          {/* Value Input */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
-            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
-              💰 Valor Total da Rota
-            </label>
-            <input
-              type="number"
-              value={simpleRouteValue}
-              onChange={(e) => setSimpleRouteValue(e.target.value)}
-              placeholder="Ex: 150.00"
-              className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className={`w-full border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all outline-none resize-none ${responsive.isDesktop ? 'h-48 p-4' : 'h-40 p-3'}`}
             />
           </div>
 
-          {/* Botões */}
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={handleAnalyzeAddresses}
-              disabled={simpleLoading || !addressesText.trim() || !simpleRouteValue}
-              className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
-            >
-              <Sparkles size={20} />
-              {simpleLoading ? 'Analisando...' : 'Analisar'}
-            </button>
-            <button
-              onClick={() => {
-                if (confirm('Cancelar importação? Todos os dados serão perdidos.')) {
-                  fetch('/api/session/cancel-import', { method: 'POST' })
-                    .then(() => {
-                      localStorage.removeItem('resuming_session');
-                      localStorage.removeItem('resume_tab');
-                      localStorage.removeItem('current_step');
-                      window.location.href = '/';
-                    })
-                    .catch(e => console.error(e));
-                }
-              }}
-              className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-lg transition-colors"
-            >
-              ❌ Cancelar
-            </button>
-          </div>
+          {/* Value Input e Ações */}
+          <div className={`grid gap-4 ${responsive.isDesktop ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            <div className={`bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 ${responsive.isDesktop ? 'p-6' : 'p-4'}`}>
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+                💰 Valor Total da Rota (R$)
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">R$</span>
+                <input
+                  type="number"
+                  value={simpleRouteValue}
+                  onChange={(e) => setSimpleRouteValue(e.target.value)}
+                  placeholder="150.00"
+                  className="w-full pl-10 p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-bold text-lg outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                />
+              </div>
+            </div>
 
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={handleAnalyzeAddresses}
+                disabled={simpleLoading || !addressesText.trim() || !simpleRouteValue}
+                className="col-span-1 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-md hover:shadow-lg active:scale-95 flex flex-col items-center justify-center gap-1 p-2"
+              >
+                {simpleLoading ? (
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                ) : (
+                  <>
+                    <Sparkles size={24} />
+                    <span>Analisar</span>
+                  </>
+                )}
+              </button>
+              
+              <button
+                onClick={handleClearSimple}
+                className="col-span-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-200 font-bold rounded-xl transition-all flex flex-col items-center justify-center gap-1 p-2"
+              >
+                <FileUp size={24} className="rotate-180" /> 
+                <span>Limpar</span>
+              </button>
+            </div>
+          </div>
           {/* Resultado */}
           {simpleAnalysis && (
             <div className="space-y-4">
@@ -402,17 +404,15 @@ Rua General Polidoro, 322, 301
                   ? 'from-yellow-500 to-orange-600'
                   : 'from-red-500 to-pink-600'
               }`}>
-                <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className={`grid gap-4 ${responsive.isDesktop ? 'grid-cols-4' : 'grid-cols-2'}`}>
                   <div>
                     <p className="text-sm opacity-80">Valor</p>
                     <p className="text-2xl font-bold">{simpleAnalysis.header?.['💰 VALOR']}</p>
                   </div>
                   <div>
                     <p className="text-sm opacity-80">Tipo</p>
-                    <p className="text-2xl font-bold">{simpleAnalysis.header?.['⭐ TIPO']}</p>
+                    <p className={`font-bold ${String(simpleAnalysis.header?.['⭐ TIPO'] || '').length > 10 ? 'text-xl' : 'text-2xl'}`}>{simpleAnalysis.header?.['⭐ TIPO']}</p>
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm opacity-80">Score</p>
                     <p className="text-3xl font-bold">{simpleAnalysis.header?.['📊 SCORE']}</p>
@@ -464,7 +464,7 @@ Rua General Polidoro, 322, 301
               {/* Perfil da Rota */}
               <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
                 <h4 className="font-bold text-gray-900 dark:text-white mb-3">📊 Perfil da Rota</h4>
-                <div className="grid grid-cols-2 gap-3">
+                <div className={`grid gap-3 ${responsive.isDesktop ? 'grid-cols-4' : 'grid-cols-2'}`}>
                   <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
                     <p className="text-xs text-gray-500">Tipo</p>
                     <p className="font-bold text-gray-900 dark:text-white">{simpleAnalysis.profile?.type}</p>
@@ -558,7 +558,7 @@ Rua General Polidoro, 322, 301
       {viewMode === 'import' && (
         <div className="space-y-4">
           {/* Upload File */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+          <div className={`bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 ${responsive.isDesktop ? 'p-6' : 'p-4'}`}>
             <div
               onClick={() => fileInputRef.current?.click()}
               className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
@@ -573,12 +573,12 @@ Rua General Polidoro, 322, 301
               <FileUp size={48} className="mx-auto text-gray-400 mb-4" />
               {file ? (
                 <div>
-                  <p className="font-bold text-green-600">{file.name}</p>
+                  <p className="font-bold text-green-600 text-lg">{file.name}</p>
                   <p className="text-sm text-gray-500">{(file.size / 1024).toFixed(1)} KB</p>
                 </div>
               ) : (
                 <div>
-                  <p className="font-bold text-gray-700 dark:text-gray-300">Clique ou arraste arquivo Excel</p>
+                  <p className="font-bold text-gray-700 dark:text-gray-300 text-lg">Clique ou arraste arquivo Excel</p>
                   <p className="text-sm text-gray-500">Suporta .xlsx ou .xls (Shopee)</p>
                 </div>
               )}
@@ -586,17 +586,20 @@ Rua General Polidoro, 322, 301
           </div>
 
           {/* Value Input */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+          <div className={`bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 ${responsive.isDesktop ? 'p-6' : 'p-4'}`}>
             <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
-              💰 Valor Inicial da Sessão
+              💰 Valor Inicial da Sessão (R$)
             </label>
-            <input
-              type="number"
-              value={importRouteValue}
-              onChange={(e) => setImportRouteValue(e.target.value)}
-              placeholder="Ex: 500.00"
-              className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-            />
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">R$</span>
+              <input
+                type="number"
+                value={importRouteValue}
+                onChange={(e) => setImportRouteValue(e.target.value)}
+                placeholder="500.00"
+                className="w-full pl-10 p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-bold text-lg outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              />
+            </div>
           </div>
 
           {/* Botões Import */}
@@ -604,73 +607,88 @@ Rua General Polidoro, 322, 301
             <button
               onClick={handleImport}
               disabled={loading || !file || !importRouteValue}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+              className={`w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-md hover:shadow-lg active:scale-95 flex items-center justify-center gap-2 ${responsive.isDesktop ? 'py-4 text-lg' : 'py-3'}`}
             >
-              <FileUp size={20} />
-              {loading ? 'Importando...' : 'Importar Romaneio'}
+              {loading ? (
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+              ) : (
+                <>
+                  <FileUp size={24} />
+                  <span>Importar Romaneio</span>
+                </>
+              )}
             </button>
           ) : (
-            <div className="space-y-3">
+            <div className={`grid gap-3 ${responsive.isDesktop ? 'grid-cols-2' : 'grid-cols-1'}`}>
               <button
                 onClick={handleImportAdditional}
                 disabled={loading || !file}
-                className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+                className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
               >
                 <FileUp size={20} />
-                {loading ? 'Importando...' : 'Importar Mais um Romaneio'}
+                {loading ? '...' : '+ Add Outro Romaneio'}
               </button>
               <button
                 onClick={handleSessionReport}
                 disabled={loading}
-                className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition-colors"
+                className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
               >
-                {loading ? 'Gerando...' : '📊 Gerar Relatório Completo'}
+                <Sparkles size={20} />
+                {loading ? '...' : 'Gerar Relatório Completo'}
               </button>
             </div>
           )}
 
           {/* Resultado da Importação */}
           {importAnalysis && (
-            <div className="space-y-4">
-              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4">
-                <p className="font-bold text-green-900 dark:text-green-300">✅ Sessão Análise Gerada!</p>
-                <p className="text-sm text-green-800 dark:text-green-400">Próximo: Otimizar e distribuir entregadores</p>
+            <div className="space-y-4 animate-fade-in">
+              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4 flex items-center gap-3">
+                <div className="bg-green-100 p-2 rounded-full text-green-600">
+                  <Sparkles size={24} />
+                </div>
+                <div>
+                  <p className="font-bold text-green-900 dark:text-green-300">Sessão Gerada!</p>
+                  <p className="text-sm text-green-800 dark:text-green-400">Próximo: Otimizar e distribuir entregadores</p>
+                </div>
               </div>
 
               {importAnalysis.formatted && (
-                <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 space-y-4">
-                  <h4 className="font-bold text-gray-900 dark:text-white">📊 Análise da Sessão</h4>
+                <div className={`bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 space-y-4 ${responsive.isDesktop ? 'p-6' : 'p-4'}`}>
+                  <h4 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <TrendingUp size={20} className="text-blue-600" />
+                    Análise da Sessão
+                  </h4>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
-                      <p className="text-xs text-gray-500">Valor</p>
-                      <p className="font-bold text-gray-900 dark:text-white">{importAnalysis.formatted.header?.value}</p>
+                  <div className={`grid gap-3 ${responsive.isDesktop ? 'grid-cols-4' : 'grid-cols-2'}`}>
+                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg text-center">
+                      <p className="text-xs text-gray-500 uppercase">Valor</p>
+                      <p className="font-bold text-gray-900 dark:text-white text-lg">{importAnalysis.formatted.header?.value}</p>
                     </div>
-                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
-                      <p className="text-xs text-gray-500">Tipo</p>
-                      <p className="font-bold text-gray-900 dark:text-white">{importAnalysis.formatted.header?.type}</p>
+                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg text-center">
+                      <p className="text-xs text-gray-500 uppercase">Tipo</p>
+                      <p className="font-bold text-gray-900 dark:text-white text-lg">{importAnalysis.formatted.header?.type}</p>
                     </div>
-                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
-                      <p className="text-xs text-gray-500">Score</p>
-                      <p className="font-bold text-gray-900 dark:text-white">{importAnalysis.formatted.header?.score}</p>
+                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg text-center">
+                      <p className="text-xs text-gray-500 uppercase">Score</p>
+                      <p className="font-bold text-gray-900 dark:text-white text-2xl text-blue-600">{importAnalysis.formatted.header?.score}</p>
                     </div>
-                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
-                      <p className="text-xs text-gray-500">Recomendação</p>
-                      <p className="font-bold text-gray-900 dark:text-white">{importAnalysis.formatted.header?.recommendation}</p>
+                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg text-center">
+                      <p className="text-xs text-gray-500 uppercase">Status</p>
+                      <p className="font-bold text-gray-900 dark:text-white text-sm">{importAnalysis.formatted.header?.recommendation}</p>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className={`grid gap-3 ${responsive.isDesktop ? 'grid-cols-4' : 'grid-cols-2'}`}>
                     <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
-                      <p className="text-xs text-blue-600">Ganho/Hora</p>
+                      <p className="text-xs text-blue-600 font-bold">Ganho/Hora</p>
                       <p className="font-bold text-gray-900 dark:text-white">{importAnalysis.formatted.earnings?.hourly}</p>
                     </div>
                     <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
-                      <p className="text-xs text-blue-600">Ganho/Pacote</p>
+                      <p className="text-xs text-blue-600 font-bold">Ganho/Pct</p>
                       <p className="font-bold text-gray-900 dark:text-white">{importAnalysis.formatted.earnings?.package}</p>
                     </div>
-                    <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg col-span-2">
-                      <p className="text-xs text-blue-600">Tempo Estimado</p>
+                    <div className={`bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg ${responsive.isDesktop ? 'col-span-2' : 'col-span-2'}`}>
+                      <p className="text-xs text-blue-600 font-bold">Tempo Total Est.</p>
                       <p className="font-bold text-gray-900 dark:text-white">{importAnalysis.formatted.earnings?.time_estimate}</p>
                     </div>
                   </div>
@@ -678,14 +696,14 @@ Rua General Polidoro, 322, 301
                   {importAnalysis.formatted.top_drops?.length > 0 && (
                     <div>
                       <p className="text-sm font-bold text-gray-900 dark:text-white mb-2">🔥 Top Drops</p>
-                      <div className="space-y-2">
+                      <div className="grid gap-2 grid-cols-1 md:grid-cols-2">
                         {importAnalysis.formatted.top_drops.map((drop, i) => (
-                          <div key={i} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
-                            <div className="flex items-center gap-2">
-                              <span className="text-lg">{drop.emoji}</span>
+                          <div key={i} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-100 dark:border-gray-600">
+                            <div className="flex items-center gap-3">
+                              <span className="text-2xl">{drop.emoji}</span>
                               <span className="font-semibold text-gray-900 dark:text-white">{drop.street}</span>
                             </div>
-                            <span className="text-sm text-gray-600 dark:text-gray-300">{drop.count} endereços</span>
+                            <span className="text-xs font-bold bg-white dark:bg-gray-600 px-2 py-1 rounded text-gray-600 dark:text-gray-300">{drop.count} entregas</span>
                           </div>
                         ))}
                       </div>
@@ -696,8 +714,8 @@ Rua General Polidoro, 322, 301
 
               {importAnalysis.minimap_url && (
                 <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-                  <div className="bg-gradient-to-r from-purple-500 to-pink-500 p-4 text-white font-bold">
-                    🗺️ Minimapa da Sessão
+                  <div className="bg-gradient-to-r from-purple-500 to-pink-500 p-4 text-white font-bold flex items-center gap-2">
+                    <Map size={20} /> Minimapa da Sessão
                   </div>
                   <iframe
                     src={importAnalysis.minimap_url}
@@ -712,25 +730,28 @@ Rua General Polidoro, 322, 301
 
           {/* Otimize Section */}
           {hasRomaneio && (
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+            <div className={`bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 ${responsive.isDesktop ? 'p-6' : 'p-4'}`}>
               <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
-                📍 Quantos Entregadores?
+                📍 Quantos Entregadores para dividir?
               </label>
-              <div className="flex gap-2">
-                <input
-                  type="number"
-                  min="1"
-                  max="10"
-                  value={numDeliverers}
-                  onChange={(e) => setNumDeliverers(e.target.value)}
-                  className="flex-1 p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                />
+              <div className={`flex gap-3 ${responsive.isDesktop ? 'flex-row items-center' : 'flex-col'}`}>
+                <div className="relative flex-1">
+                   <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20}/>
+                   <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={numDeliverers}
+                    onChange={(e) => setNumDeliverers(e.target.value)}
+                    className="w-full pl-10 p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-bold text-lg"
+                  />
+                </div>
                 <button
                   onClick={handleOptimize}
                   disabled={loading || !hasRomaneio}
-                  className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold px-6 py-3 rounded-lg transition-colors"
+                  className={`bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold px-8 py-3 rounded-lg transition-colors shadow-lg hover:shadow-xl ${responsive.isDesktop ? '' : 'w-full'}`}
                 >
-                  {loading ? '...' : '🚀 Otimizar'}
+                  {loading ? 'Processando...' : '🚀 Otimizar Rotas'}
                 </button>
               </div>
             </div>
@@ -738,50 +759,75 @@ Rua General Polidoro, 322, 301
 
           {/* Routes & Assignment */}
           {routes.length > 0 && (
-            <div className="space-y-3">
-              <h3 className="font-bold text-gray-900 dark:text-white">Atribua Entregadores</h3>
-              {routes.map((route, idx) => (
-                <div key={route.route_id} className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
-                  <p className="font-bold text-gray-900 dark:text-white mb-3">
-                    Rota {idx + 1}: {route.total_stops ?? '-'} paradas, {route.total_packages ?? '-'} pacotes
-                  </p>
-                  {route.map_url && (
-                    <div className="mb-3">
-                      <a
-                        href={route.map_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-2 text-sm font-semibold text-purple-700 dark:text-purple-300 hover:underline"
-                      >
-                        🗺️ Ver mapa desta rota
-                      </a>
+            <div className="space-y-4 animate-fade-in-up">
+              <h3 className="font-bold text-xl text-gray-900 dark:text-white flex items-center gap-2">
+                <Users size={24} className="text-purple-600" />
+                Atribuição de Entregadores
+              </h3>
+              
+              <div className={`grid gap-4 ${responsive.isDesktop ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                {routes.map((route, idx) => (
+                  <div key={route.route_id} className="bg-white dark:bg-gray-800 rounded-xl p-5 border-2 border-gray-100 dark:border-gray-700 hover:border-purple-200 dark:hover:border-purple-900 transition-all shadow-sm">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <p className="font-bold text-lg text-gray-900 dark:text-white">Rota {idx + 1}</p>
+                        <p className="text-sm text-gray-500">{route.total_stops ?? '-'} paradas • {route.total_packages ?? '-'} pacotes</p>
+                      </div>
+                      <div className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-3 py-1 rounded-full text-xs font-bold">
+                        {route.percentage_load ? `${route.percentage_load}% volume` : 'Auto'}
+                      </div>
                     </div>
+
+                    {route.map_url && (
+                      <div className="mb-4">
+                        <a
+                          href={route.map_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-2 text-sm font-bold text-purple-600 dark:text-purple-400 hover:underline bg-purple-50 dark:bg-purple-900/20 px-3 py-2 rounded-lg w-full justify-center transition-colors hover:bg-purple-100"
+                        >
+                          <Map size={16} /> Ver mapa no Google M.
+                        </a>
+                      </div>
+                    )}
+                    
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Entregador Responsável</label>
+                    <select
+                      value={assignments[route.route_id] || ''}
+                      onChange={(e) => handleAssign(route.route_id, e.target.value)}
+                      className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white font-medium focus:ring-2 focus:ring-purple-500 outline-none"
+                    >
+                      <option value="">-- Selecione --</option>
+                      {deliverers.map(d => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-3 pt-4">
+                <button
+                  onClick={handleStartRoutes}
+                  disabled={!allAssigned || loading}
+                  className={`w-full ${allAssigned ? 'bg-green-600 hover:bg-green-700 shadow-green-500/30' : 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed'} text-white font-bold py-4 rounded-xl transition-all shadow-lg text-lg flex items-center justify-center gap-2`}
+                >
+                  {loading ? 'Enviando...' : (
+                    <>
+                      <Send size={24} />
+                      Confirmar e Enviar Rotas
+                    </>
                   )}
-                  <select
-                    value={assignments[route.route_id] || ''}
-                    onChange={(e) => handleAssign(route.route_id, e.target.value)}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  >
-                    <option value="">-- Selecione Entregador --</option>
-                    {deliverers.map(d => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
-                    ))}
-                  </select>
-                </div>
-              ))}
-              <button
-                onClick={handleStartRoutes}
-                disabled={!allAssigned || loading}
-                className={`w-full ${allAssigned ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-400'} text-white font-bold py-3 rounded-lg transition-colors`}
-              >
-                {loading ? 'Enviando...' : '✅ Iniciar Rotas'}
-              </button>
-              <button
-                onClick={() => (window.location.href = '/?tab=separation')}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg transition-colors"
-              >
-                🔄 Abrir Modo Separação
-              </button>
+                </button>
+                
+                <button
+                  onClick={() => (window.location.href = '/?tab=separation')}
+                  className="w-full bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2"
+                >
+                  <Navigation size={20} />
+                  Ir para Modo Separação
+                </button>
+              </div>
             </div>
           )}
         </div>

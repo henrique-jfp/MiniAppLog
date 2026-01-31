@@ -249,7 +249,10 @@ function App() {
         
         {adminStats?.active_session ? (
           <button
-            onClick={() => setActiveTab('analysis')}
+            onClick={() => {
+              const resumeTab = localStorage.getItem('resume_tab') || 'analysis';
+              setActiveTab(resumeTab);
+            }}
             className="w-full flex items-center gap-3 p-3 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-900/40 transition cursor-pointer"
           >
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse-soft" />

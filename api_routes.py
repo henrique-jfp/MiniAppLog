@@ -1952,7 +1952,7 @@ def get_history_sessions(limit: int = 100):
 def resume_session(session_id: str):
     """
     ▶️ Retomar sessão - carrega estado completo para continuar no PC/mobile
-    Retorna: romaneio, rotas, entregadores, financeiro, tudo
+    Retorna: romaneio, rotas, entregadores, financeiro, PASSO ATUAL
     """
     try:
         session = session_manager.get_session(session_id)
@@ -1971,21 +1971,38 @@ def resume_session(session_id: str):
             else:
                 routes_data = [vars(r) for r in (routes_obj or [])]
         
+        # Determina qual PASSO deve ser retomado
+        current_step = getattr(session, "current_step", "idle")
+        resume_tab = "analysis"  # default
+        
+        if current_step == "imported":
+            resume_tab = "analysis"  # Voltará com romaneio carregado
+        elif current_step in ["optimizing", "optimized"]:
+            resume_tab = "analysis"  # Voltará na tela de otimização
+        elif current_step in ["assigning", "assigned"]:
+            resume_tab = "separation"  # Voltará na tela de atribuição/separação
+        elif current_step == "separating":
+            resume_tab = "separation"  # Voltará no modo separação
+        
         return {
             "status": "resumed",
             "session_id": session_id,
+            "resume_tab": resume_tab,  # ← Aba pra retomar
+            "current_step": current_step,  # ← Passo atual
             "session_name": getattr(session, "session_name", ""),
             "date": getattr(session, "date", ""),
             "period": getattr(session, "period", ""),
             "created_at": str(getattr(session, "created_at", "")),
             "is_finalized": getattr(session, "is_finalized", False),
+            "route_value": getattr(session, "route_value", 0.0),
+            "num_deliverers": getattr(session, "num_deliverers", 0),
             "romaneios": {
                 "count": len(getattr(session, "romaneios", [])),
                 "total_addresses": sum(len(r.points) for r in getattr(session, "romaneios", []))
             },
             "routes": {
                 "count": len(routes_data),
-                "data": routes_data[:5]  # Primeiras 5 pra não sobrecarregar
+                "data": routes_data[:5]
             },
             "financials": {
                 "total_packages": getattr(session, "total_packages", 0),
@@ -1998,33 +2015,56 @@ def resume_session(session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/session/current")
-def get_current_session():
+@router.post("/session/update-step")
+async def update_session_step(session_id: Optional[str] = None, step: str = "idle"):
     """
-    ⚡ GET sessão ATIVA (carregada na memória)
-    Usado para sincronizar estado entre PC e celular
+    📍 Atualizar o passo atual da sessão
+    Passos: idle → importing → imported → optimizing → optimized → assigning → assigned → separating → completed
     """
     try:
-        session = session_manager.get_current_session()
+        session = session_manager.get_current_session() if not session_id else session_manager.get_session(session_id)
         if not session:
-            return {
-                "active": False,
-                "message": "Nenhuma sessão ativa"
-            }
+            raise HTTPException(status_code=400, detail="Nenhuma sessão ativa")
+        
+        session.current_step = step
+        session_manager._auto_save(session)
         
         return {
-            "active": True,
+            "status": "updated",
             "session_id": session.session_id,
-            "session_name": getattr(session, "session_name", ""),
-            "date": getattr(session, "date", ""),
-            "period": getattr(session, "period", ""),
-            "is_finalized": getattr(session, "is_finalized", False),
-            "status": "finalized" if getattr(session, "is_finalized", False) else "active",
-            "total_packages": getattr(session, "total_packages", 0),
-            "total_delivered": getattr(session, "total_delivered", 0),
-            "total_pending": getattr(session, "total_pending", 0)
+            "current_step": step
         }
     except Exception as e:
-        logger.error(f"Erro ao obter sessão ativa: {e}")
+        logger.error(f"Erro ao atualizar passo: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/session/cancel-import")
+async def cancel_romaneio_import(session_id: Optional[str] = None):
+    """
+    ❌ Cancelar importação de romaneio e voltar pra zero
+    Limpa dados mas mantém sessão
+    """
+    try:
+        session = session_manager.get_current_session() if not session_id else session_manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=400, detail="Nenhuma sessão ativa")
+        
+        # Limpa romaneios e rotas
+        session.romaneios = []
+        session.routes = []
+        session.current_step = "idle"
+        session.route_value = 0.0
+        session.num_deliverers = 0
+        
+        session_manager._auto_save(session)
+        
+        return {
+            "status": "cancelled",
+            "session_id": session.session_id,
+            "message": "Importação cancelada. Você pode começar uma nova."
+        }
+    except Exception as e:
+        logger.error(f"Erro ao cancelar importação: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 

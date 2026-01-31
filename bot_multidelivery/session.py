@@ -86,6 +86,9 @@ class DailySession:
     routes: List[Route] = field(default_factory=list)
     is_finalized: bool = False
     finalized_at: Optional[datetime] = None
+    current_step: str = 'idle'  # idle, importing, imported, optimizing, optimized, assigning, assigned, separating, completed
+    route_value: float = 0.0  # Valor total da rota
+    num_deliverers: int = 0  # Número de entregadores pra otimização
     
     @property
     def total_packages(self) -> int:

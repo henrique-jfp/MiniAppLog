@@ -35,9 +35,11 @@ const HistoryView = () => {
       // Salva sessão no localStorage para recuperação
       localStorage.setItem('resuming_session', JSON.stringify(data));
       localStorage.setItem('current_session_id', sessionId);
+      localStorage.setItem('resume_tab', data.resume_tab);
+      localStorage.setItem('current_step', data.current_step);
       
-      // Redireciona para análise com sessionId
-      window.location.href = `/?tab=analysis&session_id=${sessionId}`;
+      // Redireciona para a aba CERTA baseado no passo
+      window.location.href = `/?tab=${data.resume_tab}&session_id=${sessionId}`;
     } catch (error) {
       console.error('Erro ao retomar sessão:', error);
       alert('Erro ao carregar sessão. Tente novamente.');

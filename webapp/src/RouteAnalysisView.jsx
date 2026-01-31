@@ -373,10 +373,21 @@ Rua General Polidoro, 322, 301
               {simpleLoading ? 'Analisando...' : 'Analisar'}
             </button>
             <button
-              onClick={handleClearSimple}
-              className="bg-gray-300 hover:bg-gray-400 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white font-bold py-3 rounded-lg transition-colors"
+              onClick={() => {
+                if (confirm('Cancelar importação? Todos os dados serão perdidos.')) {
+                  fetch('/api/session/cancel-import', { method: 'POST' })
+                    .then(() => {
+                      localStorage.removeItem('resuming_session');
+                      localStorage.removeItem('resume_tab');
+                      localStorage.removeItem('current_step');
+                      window.location.href = '/';
+                    })
+                    .catch(e => console.error(e));
+                }
+              }}
+              className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-lg transition-colors"
             >
-              Limpar
+              ❌ Cancelar
             </button>
           </div>
 

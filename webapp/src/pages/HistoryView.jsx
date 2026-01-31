@@ -6,23 +6,43 @@ const HistoryView = () => {
   const [loading, setLoading] = useState(true);
   const [expandedSession, setExpandedSession] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [activeSession, setActiveSession] = useState(null);
 
   // Carregar histórico de sessões
   useEffect(() => {
-    const fetchHistory = async () => {
-      try {
-        const response = await fetch('/api/history/sessions?limit=100');
-        const data = await response.json();
-        setSessions(data.sessions || []);
-        setLoading(false);
-      } catch (error) {
-        console.error('Erro ao carregar histórico:', error);
-        setLoading(false);
-      }
-    };
-
     fetchHistory();
   }, []);
+
+  const fetchHistory = async () => {
+    try {
+      const response = await fetch('/api/history/sessions?limit=100');
+      const data = await response.json();
+      setSessions(data.sessions || []);
+      setLoading(false);
+    } catch (error) {
+      console.error('Erro ao carregar histórico:', error);
+      setLoading(false);
+    }
+  };
+
+  // Retomar sessão - carregar estado completo
+  const handleResumeSession = async (sessionId) => {
+    try {
+      const response = await fetch(`/api/session/${sessionId}/resume`);
+      if (!response.ok) throw new Error('Erro ao carregar sessão');
+      const data = await response.json();
+      
+      // Salva sessão no localStorage para recuperação
+      localStorage.setItem('resuming_session', JSON.stringify(data));
+      localStorage.setItem('current_session_id', sessionId);
+      
+      // Redireciona para análise com sessionId
+      window.location.href = `/?tab=analysis&session_id=${sessionId}`;
+    } catch (error) {
+      console.error('Erro ao retomar sessão:', error);
+      alert('Erro ao carregar sessão. Tente novamente.');
+    }
+  };
 
   // Formatar moeda
   const formatCurrency = (value) => {
@@ -119,10 +139,10 @@ const HistoryView = () => {
             {filteredSessions.map((session) => (
               <div
                 key={session.id}
-                className="bg-white dark:bg-gray-800 rounded-lg shadow hover:shadow-lg transition overflow-hidden"
+                className="bg-white dark:bg-gray-800 rounded-lg shadow hover:shadow-lg transition overflow-hidden cursor-pointer group"
               >
-                {/* Card Header */}
-                <button
+                {/* Card Header - Clicável */}
+                <div
                   onClick={() => setExpandedSession(expandedSession === session.id ? null : session.id)}
                   className="w-full p-6 hover:bg-gray-50 dark:hover:bg-gray-700 transition flex items-center justify-between"
                 >
@@ -159,12 +179,24 @@ const HistoryView = () => {
                       </div>
                     </div>
                   </div>
-                  <ChevronDown
-                    className={`w-6 h-6 text-gray-400 transition-transform ${
-                      expandedSession === session.id ? 'transform rotate-180' : ''
-                    }`}
-                  />
-                </button>
+                  <div className="flex items-center gap-3">
+                    {/* Botão Retomar */}
+                    {!session.is_completed && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleResumeSession(session.id);
+                        }}
+                        className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-bold text-sm transition flex items-center gap-2"
+                      >
+                        ▶️ Retomar
+                      </button>
+                    )}
+                    <ChevronDown
+                      className={`w-6 h-6 text-gray-400 transition-transform ${expandedSession === session.id ? 'transform rotate-180' : ''}`}
+                    />
+                  </div>
+                </div>
 
                 {/* Expanded Content */}
                 {expandedSession === session.id && (

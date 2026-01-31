@@ -248,13 +248,17 @@ function App() {
         </div>
         
         {adminStats?.active_session ? (
-          <div className="flex items-center gap-3 p-3 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-200 dark:border-green-800">
+          <button
+            onClick={() => setActiveTab('analysis')}
+            className="w-full flex items-center gap-3 p-3 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-900/40 transition cursor-pointer"
+          >
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse-soft" />
-            <div className="flex-1">
+            <div className="flex-1 text-left">
               <p className="font-semibold text-green-700 dark:text-green-400 text-sm">Sessão Ativa</p>
               <p className="text-xs text-green-600 dark:text-green-500">{adminStats.session_name}</p>
             </div>
-          </div>
+            <div className="text-green-600 dark:text-green-400 text-lg">→</div>
+          </button>
         ) : (
           <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl">
             <div className="w-2 h-2 bg-gray-400 rounded-full" />

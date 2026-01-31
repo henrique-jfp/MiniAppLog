@@ -1946,3 +1946,85 @@ def get_history_sessions(limit: int = 100):
     except Exception as e:
         logger.error(f"Erro ao recuperar histórico: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/session/{session_id}/resume")
+def resume_session(session_id: str):
+    """
+    ▶️ Retomar sessão - carrega estado completo para continuar no PC/mobile
+    Retorna: romaneio, rotas, entregadores, financeiro, tudo
+    """
+    try:
+        session = session_manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Sessão não encontrada")
+        
+        # Define como sessão atual
+        session_manager.set_current_session(session_id)
+        
+        # Monta payload completo de retomada
+        routes_data = []
+        if hasattr(session, "routes"):
+            routes_obj = session.routes
+            if isinstance(routes_obj, dict):
+                routes_data = [{"id": rid, **vars(r)} for rid, r in routes_obj.items()]
+            else:
+                routes_data = [vars(r) for r in (routes_obj or [])]
+        
+        return {
+            "status": "resumed",
+            "session_id": session_id,
+            "session_name": getattr(session, "session_name", ""),
+            "date": getattr(session, "date", ""),
+            "period": getattr(session, "period", ""),
+            "created_at": str(getattr(session, "created_at", "")),
+            "is_finalized": getattr(session, "is_finalized", False),
+            "romaneios": {
+                "count": len(getattr(session, "romaneios", [])),
+                "total_addresses": sum(len(r.points) for r in getattr(session, "romaneios", []))
+            },
+            "routes": {
+                "count": len(routes_data),
+                "data": routes_data[:5]  # Primeiras 5 pra não sobrecarregar
+            },
+            "financials": {
+                "total_packages": getattr(session, "total_packages", 0),
+                "total_delivered": getattr(session, "total_delivered", 0),
+                "total_pending": getattr(session, "total_pending", 0)
+            }
+        }
+    except Exception as e:
+        logger.error(f"Erro ao retomar sessão: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/session/current")
+def get_current_session():
+    """
+    ⚡ GET sessão ATIVA (carregada na memória)
+    Usado para sincronizar estado entre PC e celular
+    """
+    try:
+        session = session_manager.get_current_session()
+        if not session:
+            return {
+                "active": False,
+                "message": "Nenhuma sessão ativa"
+            }
+        
+        return {
+            "active": True,
+            "session_id": session.session_id,
+            "session_name": getattr(session, "session_name", ""),
+            "date": getattr(session, "date", ""),
+            "period": getattr(session, "period", ""),
+            "is_finalized": getattr(session, "is_finalized", False),
+            "status": "finalized" if getattr(session, "is_finalized", False) else "active",
+            "total_packages": getattr(session, "total_packages", 0),
+            "total_delivered": getattr(session, "total_delivered", 0),
+            "total_pending": getattr(session, "total_pending", 0)
+        }
+    except Exception as e:
+        logger.error(f"Erro ao obter sessão ativa: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

@@ -2,8 +2,12 @@ import os
 import json
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from bot_multidelivery.config import BotConfig
+from bot_multidelivery.session import session_manager
 from bot_multidelivery.persistence import data_store
 from bot_multidelivery.services.deliverer_service import DelivererService
+
+router = APIRouter(prefix="/api")
 
 class DelivererInput(BaseModel):
     name: str

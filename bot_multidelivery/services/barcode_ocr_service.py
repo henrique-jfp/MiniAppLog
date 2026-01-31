@@ -3,18 +3,35 @@
 Suporta: QR Code, Code128, Code39, EAN13 via OCR+ML
 """
 
-import cv2
+import logging
+import base64
+import io
+import re
+from typing import Optional, Dict, Tuple, List
+
 import numpy as np
 from PIL import Image
 import pytesseract
-from pyzbar import pyzbar
-import base64
-import io
-from typing import Optional, Dict, Tuple, List
-import re
-import logging
 
 logger = logging.getLogger(__name__)
+
+try:
+    import cv2
+    _CV2_AVAILABLE = True
+    _CV2_IMPORT_ERROR = None
+except Exception as e:
+    cv2 = None
+    _CV2_AVAILABLE = False
+    _CV2_IMPORT_ERROR = str(e)
+
+try:
+    from pyzbar import pyzbar
+    _PYZBAR_AVAILABLE = True
+    _PYZBAR_IMPORT_ERROR = None
+except Exception as e:
+    pyzbar = None
+    _PYZBAR_AVAILABLE = False
+    _PYZBAR_IMPORT_ERROR = str(e)
 
 
 class BarcodeOCRService:
@@ -40,6 +57,9 @@ class BarcodeOCRService:
         Tenta decodificar códigos de barras usando ZBar
         Retorna lista de códigos encontrados
         """
+        if not _PYZBAR_AVAILABLE:
+            logger.warning(f"⚠️ ZBar indisponível: {_PYZBAR_IMPORT_ERROR}")
+            return []
         try:
             image = self._load_image(image_path_or_base64)
             barcodes = pyzbar.decode(image)
@@ -68,6 +88,9 @@ class BarcodeOCRService:
         """
         Extrai números usando OCR quando barcode scanner visual falha
         """
+        if not _CV2_AVAILABLE:
+            logger.warning(f"⚠️ OpenCV indisponível: {_CV2_IMPORT_ERROR}")
+            return []
         try:
             image = self._load_image(image_path_or_base64)
             
@@ -109,6 +132,9 @@ class BarcodeOCRService:
         Template matching + contour detection para barras brancas/pretas
         Funciona mesmo com câmera ruim, imagem borrada, baixa res
         """
+        if not _CV2_AVAILABLE:
+            logger.warning(f"⚠️ OpenCV indisponível: {_CV2_IMPORT_ERROR}")
+            return []
         try:
             image = self._load_image(image_path_or_base64)
             
@@ -188,6 +214,8 @@ class BarcodeOCRService:
     
     def _load_image(self, image_path_or_base64: str):
         """Carrega imagem de arquivo ou base64"""
+        if not _CV2_AVAILABLE:
+            raise RuntimeError(f"OpenCV indisponível: {_CV2_IMPORT_ERROR}")
         try:
             # Tenta como base64
             if image_path_or_base64.startswith("data:image"):
@@ -300,6 +328,16 @@ async def scan_barcode_from_image(image_input: str) -> Dict:
     API endpoint: POST /api/scan-barcode
     body: {"image": "base64 ou file_path"}
     """
+    if not _CV2_AVAILABLE and not _PYZBAR_AVAILABLE:
+        return {
+            "barcode": None,
+            "metadata": {
+                "error": "OCR indisponível no servidor",
+                "cv2_error": _CV2_IMPORT_ERROR,
+                "pyzbar_error": _PYZBAR_IMPORT_ERROR,
+            },
+            "success": False,
+        }
     service = BarcodeOCRService()
     
     barcode, metadata = service.decode_barcode_full_pipeline(image_input)

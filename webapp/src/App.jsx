@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, Package, Map as MapIcon, Users, RefreshCw, Navigation, DollarSign } from 'lucide-react'
+import { LayoutDashboard, Package, Map as MapIcon, Users, RefreshCw, Navigation, DollarSign, Sparkles } from 'lucide-react'
 import MapView from './MapView'
 import FinancialView from './FinancialView'
 import TeamView from './TeamView'
+import RouteAnalysisView from './RouteAnalysisView'
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
@@ -125,6 +126,23 @@ function App() {
           </button>
       </div>
 
+      {/* Botão de Análise de Rota (Novo Feature) */}
+      <button 
+         onClick={() => setActiveTab('analysis')}
+         className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-4 rounded-xl shadow-lg shadow-purple-500/30 flex items-center justify-between group transition-all active:scale-95"
+      >
+          <div className="flex items-center gap-4">
+              <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
+                  <Sparkles className="text-white w-6 h-6" />
+              </div>
+              <div className="text-left">
+                  <span className="block font-bold text-lg">Analisar Rota IA</span>
+                  <span className="block text-xs text-purple-100 opacity-90">Upload & Otimização Auto</span>
+              </div>
+          </div>
+          <div className="opacity-70 group-hover:opacity-100 transform group-hover:translate-x-1 transition-all">→</div>
+      </button>
+
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-100 dark:border-gray-700">
         <h3 className="font-semibold mb-3 flex items-center gap-2">
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Status da Sessão
@@ -244,6 +262,14 @@ function App() {
         if (roleInfo.role === 'admin') return renderAdminDashboard()
         if (roleInfo.role === 'deliverer') return renderDelivererDashboard()
         return <div className="p-4 text-center text-gray-500">Visitante não autorizado.</div>
+    }
+
+    if (activeTab === 'analysis') {
+        return (
+             <div className="h-full overflow-y-auto p-4">
+                 <RouteAnalysisView />
+             </div>
+        )
     }
 
     if (activeTab === 'routes') {

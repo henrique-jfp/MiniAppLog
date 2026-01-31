@@ -91,8 +91,14 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /start"""
     user_id = update.effective_user.id
     
-    # Imagem de Capa
-    START_IMAGE = "https://img.freepik.com/free-vector/delivery-service-illustrated_23-2148505081.jpg"
+    # Imagem de Capa (Prioridade: Arquivo Local 'static/start_cover.jpg' > URL Padrão)
+    # Allows user to customization by dropping a file named 'start_cover.jpg' in 'bot_multidelivery/static/'
+    local_img_path = os.path.join(os.path.dirname(__file__), 'static', 'start_cover.jpg')
+    
+    if os.path.exists(local_img_path):
+        start_image_source = open(local_img_path, 'rb')
+    else:
+        start_image_source = "https://img.freepik.com/free-vector/delivery-service-illustrated_23-2148505081.jpg"
     
     if user_id == BotConfig.ADMIN_TELEGRAM_ID:
         keyboard = [
@@ -101,7 +107,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await update.message.reply_photo(
-            photo=START_IMAGE,
+            photo=start_image_source,
             caption=(
                 "📱 <b>SISTEMA HYBRID v3.0</b>\n"
                 "---\n\n"
@@ -124,7 +130,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tipo = "SOCIO" if partner.is_partner else "COLABORADOR"
             
             await update.message.reply_photo(
-                photo=START_IMAGE,
+                photo=start_image_source,
                 caption=(
                     f"🏍️ <b>BEM-VINDO, {partner.name.upper()}!</b>\n"
                     f"---\n\n"

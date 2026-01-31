@@ -11,7 +11,7 @@ from pathlib import Path
 from .models import Package, Deliverer, FinancialReport, PerformanceMetrics, PaymentRecord
 
 try:
-    from .database import db_manager, DelivererDB
+    from .database import db_manager, DelivererDB, RouteDB, PackageDB
     HAS_DATABASE = db_manager.is_connected
 except Exception as e:
     print(f"⚠️ Database import failed: {e}")

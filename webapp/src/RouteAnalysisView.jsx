@@ -55,6 +55,9 @@ export default function RouteAnalysisView() {
 
       const data = await res.json();
       setAnalysis(data);
+      if (data.minimap_url) {
+        setMinimapUrl(data.minimap_url);
+      }
     } catch (err) {
       setError(err.message);
     } finally {

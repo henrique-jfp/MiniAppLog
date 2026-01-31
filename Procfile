@@ -1,1 +1,1 @@
-web: python update_schema.py && python main_multidelivery.py
+web: python main_hybrid.py

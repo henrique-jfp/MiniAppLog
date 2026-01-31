@@ -5059,6 +5059,66 @@ async def cmd_distribuir_rota(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
 
+def create_application():
+    """Cria e configura a instância da Application com todos os handlers"""
+    import os
+    
+    # Validação crítica de variáveis de ambiente
+    token = os.getenv('TELEGRAM_BOT_TOKEN') or BotConfig.TELEGRAM_TOKEN
+    
+    if not token:
+        logger.error("[X] TELEGRAM_BOT_TOKEN não configurado!")
+        return None
+    
+    # Configurar timeouts no builder do Application
+    app = (
+        Application.builder()
+        .token(token)
+        .read_timeout(30)
+        .write_timeout(30)
+        .connect_timeout(30)
+        .pool_timeout(30)
+        .build()
+    )
+    
+    # Handlers
+    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CallbackQueryHandler(help_callback_handler, pattern="^help_"))
+    app.add_handler(CommandHandler("cancelar", cmd_cancelar))
+    app.add_handler(CommandHandler("importar", handle_document_message))
+    app.add_handler(CommandHandler("otimizar", cmd_distribuir_rota))
+    app.add_handler(CommandHandler("distribuir", cmd_distribuir_rota))
+    app.add_handler(CommandHandler("fechar_rota", cmd_fechar_rota))
+    app.add_handler(CommandHandler("analisar_rota", cmd_analisar_rota))
+    app.add_handler(CommandHandler("sessoes", cmd_sessoes))
+    app.add_handler(CommandHandler("selecionar_sessao", cmd_selecionar_sessao))
+    app.add_handler(CommandHandler("add_entregador", cmd_add_deliverer))
+    app.add_handler(CommandHandler("entregadores", cmd_list_deliverers))
+    app.add_handler(CommandHandler("ranking", cmd_ranking))
+    app.add_handler(CommandHandler("prever", cmd_predict_time))
+    app.add_handler(CommandHandler("fechar_dia", cmd_fechar_dia))
+    app.add_handler(CommandHandler("financeiro", cmd_financeiro))
+    app.add_handler(CommandHandler("fechar_semana", cmd_fechar_semana))
+    app.add_handler(CommandHandler("config_socios", cmd_config_socios))
+    app.add_handler(CommandHandler("faturamento", cmd_faturamento))
+    app.add_handler(CommandHandler("exportar", cmd_exportar))
+    app.add_handler(CommandHandler("config_banco_inter", cmd_config_banco_inter))
+    app.add_handler(CommandHandler("fechar_dia_auto", cmd_fechar_dia_auto))
+    app.add_handler(CommandHandler("saldo_banco", cmd_saldo_banco))
+    app.add_handler(CommandHandler("projecoes", cmd_projecoes))
+    app.add_handler(CommandHandler("dashboard", cmd_dashboard))
+    app.add_handler(CommandHandler("modo_separacao", cmd_modo_separacao))
+    app.add_handler(CommandHandler("fim_separacao", cmd_fim_separacao))
+    app.add_handler(CommandHandler("status_separacao", cmd_status_separacao))
+    
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_document_message))
+    app.add_handler(MessageHandler(filters.LOCATION, handle_location_message))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
+    app.add_handler(CallbackQueryHandler(handle_callback_query))
+    
+    return app
+
 def run_bot():
     """Inicia o bot com retry automtico"""
     import os
@@ -5087,58 +5147,9 @@ def run_bot():
     
     while retry_count < max_retries:
         try:
-            # Configurar timeouts no builder do Application
-            app = (
-                Application.builder()
-                .token(token)
-                .read_timeout(30)
-                .write_timeout(30)
-                .connect_timeout(30)
-                .pool_timeout(30)
-                .build()
-            )
-            
-            # Handlers
-            app.add_handler(CommandHandler("start", cmd_start))
-            app.add_handler(CommandHandler("help", cmd_help))
-            app.add_handler(CallbackQueryHandler(help_callback_handler, pattern="^help_"))
-            app.add_handler(CommandHandler("cancelar", cmd_cancelar))  # [PROIBIDO] NOVO COMMANDO DE EMERGÊNCIA
-            app.add_handler(CommandHandler("importar", handle_document_message))  # Novo comando!
-            app.add_handler(CommandHandler("otimizar", cmd_distribuir_rota))  # Renomeado!
-            app.add_handler(CommandHandler("distribuir", cmd_distribuir_rota))  # Mantido por compatibilidade
-            app.add_handler(CommandHandler("fechar_rota", cmd_fechar_rota))
-            app.add_handler(CommandHandler("analisar_rota", cmd_analisar_rota))  # [RAPIDO] NOVO!
-            app.add_handler(CommandHandler("sessoes", cmd_sessoes))  # [PASTA] NOVO!
-            app.add_handler(CommandHandler("selecionar_sessao", cmd_selecionar_sessao))  # [PASTA] Escolher sessão ativa
-            app.add_handler(CommandHandler("add_entregador", cmd_add_deliverer))
-            app.add_handler(CommandHandler("entregadores", cmd_list_deliverers))
-            app.add_handler(CommandHandler("ranking", cmd_ranking))
-            app.add_handler(CommandHandler("prever", cmd_predict_time))
-            # Comandos financeiros
-            app.add_handler(CommandHandler("fechar_dia", cmd_fechar_dia))
-            app.add_handler(CommandHandler("financeiro", cmd_financeiro))
-            app.add_handler(CommandHandler("fechar_semana", cmd_fechar_semana))
-            app.add_handler(CommandHandler("config_socios", cmd_config_socios))
-            app.add_handler(CommandHandler("faturamento", cmd_faturamento))  # [DINHEIRO] NOVO PARA ENTREGADORES
-            
-            # Comandos avançados
-            app.add_handler(CommandHandler("exportar", cmd_exportar))
-            app.add_handler(CommandHandler("config_banco_inter", cmd_config_banco_inter))
-            app.add_handler(CommandHandler("fechar_dia_auto", cmd_fechar_dia_auto))
-            app.add_handler(CommandHandler("saldo_banco", cmd_saldo_banco))
-            app.add_handler(CommandHandler("projecoes", cmd_projecoes))
-            app.add_handler(CommandHandler("dashboard", cmd_dashboard))
-            
-            # ========== SEPARAÇÃO POR COR ==========
-            app.add_handler(CommandHandler("modo_separacao", cmd_modo_separacao))
-            app.add_handler(CommandHandler("fim_separacao", cmd_fim_separacao))
-            app.add_handler(CommandHandler("status_separacao", cmd_status_separacao))
-            
-            app.add_handler(MessageHandler(filters.Document.ALL, handle_document_message))
-            app.add_handler(MessageHandler(filters.LOCATION, handle_location_message))
-            app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
-            app.add_handler(CallbackQueryHandler(handle_callback_query))
-            
+            app = create_application()
+            if not app: return
+
             logger.info(f"[ROCKET] Bot iniciado! (Tentativa {retry_count + 1}/{max_retries})")
             
             # run_polling sem parâmetros de timeout (já configurados no builder)
@@ -5158,10 +5169,10 @@ def run_bot():
             
             if isinstance(e, Conflict):
                 logger.error(
-                    "[X] CONFLITO: Múltiplas instâncias do bot rodando!\n"
-                    "Soluções:\n"
-                    "1. Pare qualquer bot rodando localmente\n"
-                    "2. No Render: certifique que é Background Worker (não Web Service)\n"
+                    "[X] CONFLITO: Múltiplas instâncias do bot rodando!\\n"
+                    "Soluções:\\n"
+                    "1. Pare qualquer bot rodando localmente\\n"
+                    "2. No Render: certifique que é Background Worker (não Web Service)\\n"
                     "3. Aguarde 1-2 minutos para timeout do outro bot"
                 )
                 break  # Não tenta reconectar em caso de conflito
@@ -5170,7 +5181,7 @@ def run_bot():
                 retry_count += 1
                 wait_time = min(30, 5 * retry_count)  # Espera progressiva: 5, 10, 15, 20, 25 segundos
                 logger.warning(
-                    f"[ALERTA] Erro de rede/timeout: {e}\n"
+                    f"[ALERTA] Erro de rede/timeout: {e}\\n"
                     f"🔄 Tentando reconectar em {wait_time} segundos... "
                     f"(Tentativa {retry_count}/{max_retries})"
                 )

@@ -95,14 +95,18 @@ async def get_me(user_id: int):
     return {"id": user_id, "role": "guest", "name": "Visitante"}
 
 
+
 def get_current_week_financials():
-    """Lê os JSONs da semana atual para calcular totais"""
+    """Lê os relatórios financeiros da semana atual"""
     from datetime import datetime, timedelta
-    import glob
     
     # Define início da semana (Segunda-feira)
     today = datetime.now()
     start_week = today - timedelta(days=today.weekday())
+    # Fim da semana (Domingo)
+    end_week = start_week + timedelta(days=6)
+    
+    # Datas para gráfico/lista
     week_dates = [(start_week + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(7)]
     
     total_revenue = 0.0
@@ -110,24 +114,48 @@ def get_current_week_financials():
     total_profit = 0.0
     deliverer_earnings = {}
     
-    base_path = "data/financial/daily"
-    
-    for date_str in week_dates:
-        file_path = f"{base_path}/{date_str}.json"
-        if os.path.exists(file_path):
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    total_revenue += data.get('revenue', 0)
-                    total_costs += data.get('delivery_costs', 0) + data.get('other_costs', 0)
-                    total_profit += data.get('net_profit', 0)
+    # Se temos DB, buscar do DB. Se não, JSON.
+    try:
+        if data_store.using_database:
+            from bot_multidelivery.database import db_manager, DailyFinancialReportDB
+            with db_manager.get_session() as session:
+                reports = session.query(DailyFinancialReportDB).filter(
+                    DailyFinancialReportDB.date >= start_week.strftime('%Y-%m-%d'),
+                    DailyFinancialReportDB.date <= end_week.strftime('%Y-%m-%d')
+                ).all()
+                
+                for r in reports:
+                    total_revenue += r.revenue
+                    total_costs += r.delivery_costs + r.other_costs
+                    total_profit += r.net_profit
                     
-                    # Soma ganhos individuais
-                    breakdown = data.get('deliverer_breakdown', {})
-                    for name, value in breakdown.items():
-                        deliverer_earnings[name] = deliverer_earnings.get(name, 0) + value
-            except Exception:
-                continue
+                    if r.deliverer_breakdown:
+                        for name, value in r.deliverer_breakdown.items():
+                            deliverer_earnings[name] = deliverer_earnings.get(name, 0) + value
+        else:
+            # Lógica JSON legada
+            import glob
+            base_path = "data/financial/daily"
+            
+            for date_str in week_dates:
+                file_path = f"{base_path}/{date_str}.json"
+                if os.path.exists(file_path):
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            total_revenue += data.get('revenue', 0)
+                            total_costs += data.get('delivery_costs', 0) + data.get('other_costs', 0)
+                            total_profit += data.get('net_profit', 0)
+                            
+                            # Soma ganhos individuais
+                            breakdown = data.get('deliverer_breakdown', {})
+                            for name, value in breakdown.items():
+                                deliverer_earnings[name] = deliverer_earnings.get(name, 0) + value
+                    except Exception:
+                        continue
+                        
+    except Exception as e:
+        print(f"Erro ao calcular financial: {e}")
                 
     return {
         "dates": week_dates,

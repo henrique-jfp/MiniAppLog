@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileUp, Sparkles, MapPin, AlertCircle, Users, Send, Map, Zap, TrendingUp } from 'lucide-react';
+import { FileUp, Sparkles, MapPin, AlertCircle, Users, Send, Map, Zap, TrendingUp, Camera } from 'lucide-react';
+import BarcodeScanner from './components/BarcodeScanner';
 
 export default function RouteAnalysisView() {
   // ===== ANÁLISE SIMPLES (por lista de endereços) =====
@@ -27,6 +28,7 @@ export default function RouteAnalysisView() {
   const [error, setError] = useState(null);
   const [deliverers, setDeliverers] = useState([]);
   const fileInputRef = useRef(null);
+  const [showScanner, setShowScanner] = useState(false);
 
   useEffect(() => {
     fetch('/api/admin/team')
@@ -359,6 +361,25 @@ Rua General Polidoro, 322, 301
               placeholder="Ex: 150.00"
               className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             />
+          </div>
+
+          {/* Botão Scanner + Análise */}
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => setShowScanner(true)}
+              className="py-3 px-4 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition"
+            >
+              <Camera className="w-4 h-4" />
+              📷 Scanner
+            </button>
+            <button
+              onClick={handleAnalyzeAddresses}
+              disabled={simpleLoading || !addressesText.trim() || !simpleRouteValue}
+              className="py-3 px-4 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition"
+            >
+              <Sparkles className="w-4 h-4" />
+              {simpleLoading ? 'Analisando...' : 'Analisar'}
+            </button>
           </div>
 
           {/* Botões */}
@@ -773,6 +794,20 @@ Rua General Polidoro, 322, 301
             </div>
           )}
         </div>
+      )}
+
+      {/* BarcodeScanner Modal */}
+      {showScanner && (
+        <BarcodeScanner 
+          onScan={(codes) => {
+            if (codes && codes.length > 0) {
+              // Adicionar códigos escaneados ao campo de endereços
+              const newCodes = codes.join('\n');
+              setAddressesText(prev => prev ? prev + '\n' + newCodes : newCodes);
+            }
+          }}
+          onClose={() => setShowScanner(false)}
+        />
       )}
     </div>
   );

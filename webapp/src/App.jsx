@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, Package, Map as MapIcon, Users, RefreshCw, Navigation, DollarSign, Sparkles, Zap, TrendingUp, Award, Moon, Sun } from 'lucide-react'
+import { LayoutDashboard, Package, Map as MapIcon, Users, RefreshCw, Navigation, DollarSign, Sparkles, Zap, TrendingUp, Award, Moon, Sun, Archive } from 'lucide-react'
 import MapView from './MapView'
 import FinancialView from './FinancialView'
 import TeamView from './TeamView'
 import RouteAnalysisView from './RouteAnalysisView'
 import SeparationMode from './SeparationMode'
+import HistoryView from './pages/HistoryView'
 import ProgressBar from './components/ProgressBar'
 
 function App() {
@@ -481,6 +482,10 @@ function App() {
         return <TeamView />;
     }
 
+    if (activeTab === 'history') {
+        return <HistoryView />;
+    }
+
     return (
       <div className="card-premium p-10 text-center">
         <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
@@ -568,6 +573,12 @@ function App() {
               label="Perfil" 
               isActive={activeTab === 'profile'} 
               onClick={() => setActiveTab('dashboard')}
+            />
+            <TabButton 
+              icon={<Archive size={22} />} 
+              label="Histórico" 
+              isActive={activeTab === 'history'} 
+              onClick={() => setActiveTab('history')}
             />
           </div>
         </div>

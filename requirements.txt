@@ -14,8 +14,10 @@ google-generativeai==0.3.2
 # Environment & Security
 python-dotenv==1.0.0
 
-# Image Processing (compatível com Python 3.13)
+# Image Processing & OCR (compatível com Python 3.13)
 Pillow==10.4.0
+opencv-python==4.8.1.78  # Para processamento de imagens de código de barras
+pyzbar==0.1.9  # Decodificação de códigos de barras com ZBar
 
 # Telegram Bot (Multi-Entregador)
 python-telegram-bot==22.5

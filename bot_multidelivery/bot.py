@@ -18,6 +18,12 @@ from .services.map_generator import MapGenerator
 from .services.barcode_separator import barcode_separator
 from .services.route_analyzer import route_analyzer
 from .colors import get_color_name, get_color_for_index
+from .session_handlers import (
+    cmd_sessions, new_session_handler, list_sessions_handler,
+    reuse_session_handler, reuse_session_select, cmd_start_session,
+    handle_deliverer_input, cmd_dashboard as cmd_session_dashboard
+)
+from .test_sessions_handler import cmd_test_sessions, test_sessions_callback
 import uuid
 
 logging.basicConfig(level=logging.INFO)
@@ -5165,6 +5171,22 @@ def create_application():
     app.add_handler(CommandHandler("modo_separacao", cmd_modo_separacao))
     app.add_handler(CommandHandler("fim_separacao", cmd_fim_separacao))
     app.add_handler(CommandHandler("status_separacao", cmd_status_separacao))
+    
+    # ========== HANDLERS DE SESSÃO (NOVO SISTEMA) ==========
+    app.add_handler(CommandHandler("sessions", cmd_sessions))
+    app.add_handler(CommandHandler("start_session", cmd_start_session))
+    app.add_handler(CommandHandler("session_dashboard", cmd_session_dashboard))
+    app.add_handler(CommandHandler("test_sessions", cmd_test_sessions))  # 🆕 Comando de teste
+    
+    # Callbacks para gerenciamento de sessões
+    app.add_handler(CallbackQueryHandler(new_session_handler, pattern="^new_session$"))
+    app.add_handler(CallbackQueryHandler(list_sessions_handler, pattern="^list_sessions$"))
+    app.add_handler(CallbackQueryHandler(reuse_session_handler, pattern="^reuse_session$"))
+    app.add_handler(CallbackQueryHandler(reuse_session_select, pattern="^reuse_select_"))
+    app.add_handler(CallbackQueryHandler(test_sessions_callback, pattern="^goto_sessions$"))  # 🆕
+    
+    # Handler para input de entregadores (text message)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.User(user_id=[u for u in []]), handle_deliverer_input))
     
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document_message))
     app.add_handler(MessageHandler(filters.LOCATION, handle_location_message))

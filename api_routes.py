@@ -1594,3 +1594,310 @@ async def import_additional_romaneio(file: UploadFile = File(...)):
         print(f"Erro ao importar romaneio adicional: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ========================================================================
+# 🆕 NOVOS ENDPOINTS - PERSISTÊNCIA, REUSO E HISTÓRICO
+# ========================================================================
+
+@router.post("/session/create")
+def create_session(
+    session_name: str = Form(...),
+    created_by: str = Form("admin")
+):
+    """
+    🔥 Criar nova sessão SEM importar romaneio
+    Retorna session_id para reutilizar depois
+    """
+    try:
+        from bot_multidelivery.session_persistence import SessionManager, SessionStatus
+        from bot_multidelivery.database import get_db
+        
+        db = next(get_db())
+        session_mgr = SessionManager(db)
+        
+        session_id = str(uuid.uuid4())
+        session = session_mgr.create_session(
+            session_id=session_id,
+            created_by=created_by,
+            manifest_data={"session_name": session_name}
+        )
+        
+        return {
+            "status": "success",
+            "session_id": session_id,
+            "message": f"Sessão '{session_name}' criada! Use para reutilizar SEM re-import.",
+            "status_value": SessionStatus.CREATED.value
+        }
+    except Exception as e:
+        logger.error(f"Erro ao criar sessão: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/session/{session_id}")
+def get_session(session_id: str):
+    """
+    🔍 Recuperar sessão existente (sem re-import!)
+    Retorna todos os dados persistidos
+    """
+    try:
+        from bot_multidelivery.session_persistence import SessionManager
+        from bot_multidelivery.database import get_db
+        
+        db = next(get_db())
+        session_mgr = SessionManager(db)
+        
+        session = session_mgr.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Sessão não encontrada")
+        
+        return {
+            "status": "success",
+            "session": session_mgr.get_session_summary(session_id)
+        }
+    except Exception as e:
+        logger.error(f"Erro ao recuperar sessão: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/session/{session_id}/open")
+def open_session(session_id: str):
+    """
+    📂 Abrir sessão para finalizar romaneio SEM re-import
+    Transição: CREATED → OPENED
+    """
+    try:
+        from bot_multidelivery.session_persistence import SessionManager
+        from bot_multidelivery.database import get_db
+        
+        db = next(get_db())
+        session_mgr = SessionManager(db)
+        
+        session = session_mgr.open_session(session_id)
+        
+        return {
+            "status": "success",
+            "message": f"Sessão {session_id} aberta! Pronta para finalizar.",
+            "session": session_mgr.get_session_summary(session_id)
+        }
+    except Exception as e:
+        logger.error(f"Erro ao abrir sessão: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/session/{session_id}/start")
+def start_session(session_id: str):
+    """
+    🚀 Iniciar distribuição de uma sessão
+    Transição: OPENED → STARTED
+    """
+    try:
+        from bot_multidelivery.session_persistence import SessionManager
+        from bot_multidelivery.database import get_db
+        
+        db = next(get_db())
+        session_mgr = SessionManager(db)
+        
+        session = session_mgr.start_session(session_id)
+        
+        return {
+            "status": "success",
+            "message": f"Distribuição iniciada para sessão {session_id}",
+            "session": session_mgr.get_session_summary(session_id)
+        }
+    except Exception as e:
+        logger.error(f"Erro ao iniciar sessão: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/session/{session_id}/complete")
+def complete_session(session_id: str):
+    """
+    ✅ Finalizar sessão (todas entregas concluídas)
+    Transição: IN_PROGRESS → COMPLETED → READ_ONLY
+    """
+    try:
+        from bot_multidelivery.session_persistence import SessionManager
+        from bot_multidelivery.database import get_db
+        
+        db = next(get_db())
+        session_mgr = SessionManager(db)
+        
+        session = session_mgr.complete_session(session_id)
+        
+        return {
+            "status": "success",
+            "message": f"Sessão {session_id} finalizada! Agora é histórico (READ_ONLY).",
+            "session": session_mgr.get_session_summary(session_id)
+        }
+    except Exception as e:
+        logger.error(f"Erro ao completar sessão: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/session/{session_id}/history")
+def get_session_history(session_id: str):
+    """
+    📚 Acessar sessão finalizada como histórico (READ_ONLY)
+    Dados congelados, sem edição possível
+    """
+    try:
+        from bot_multidelivery.session_persistence import SessionManager, SessionStatus
+        from bot_multidelivery.database import get_db
+        
+        db = next(get_db())
+        session_mgr = SessionManager(db)
+        
+        session = session_mgr.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Sessão não encontrada")
+        
+        if session.status != SessionStatus.READ_ONLY:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Sessão não é histórico (status: {session.status.value})"
+            )
+        
+        return {
+            "status": "success",
+            "history": session_mgr.get_session_summary(session_id),
+            "addresses": session.addresses or [],
+            "deliverers": session.deliverers or [],
+            "route_assignments": session.route_assignments or [],
+            "financials": session.financials or {}
+        }
+    except Exception as e:
+        logger.error(f"Erro ao recuperar histórico: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/session/list/all")
+def list_all_sessions(status: Optional[str] = None, limit: int = 50):
+    """
+    📋 Listar todas as sessões com filtro opcional de status
+    Status: created, opened, started, in_progress, completed, read_only
+    """
+    try:
+        from bot_multidelivery.session_persistence import SessionManager, SessionStatus
+        from bot_multidelivery.database import get_db
+        
+        db = next(get_db())
+        session_mgr = SessionManager(db)
+        
+        session_status = None
+        if status:
+            try:
+                session_status = SessionStatus[status.upper()]
+            except KeyError:
+                raise HTTPException(status_code=400, detail=f"Status inválido: {status}")
+        
+        sessions = session_mgr.list_sessions(status=session_status, limit=limit)
+        summaries = [session_mgr.get_session_summary(s.id) for s in sessions]
+        
+        return {
+            "status": "success",
+            "total": len(summaries),
+            "sessions": summaries
+        }
+    except Exception as e:
+        logger.error(f"Erro ao listar sessões: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/financials/session/{session_id}")
+def get_session_financials(session_id: str):
+    """
+    💰 Obter financeiro COMPLETO da sessão
+    Inclui: lucro rota, custo rota, salário entregador
+    """
+    try:
+        from bot_multidelivery.session_persistence import SessionManager
+        from bot_multidelivery.database import get_db
+        
+        db = next(get_db())
+        session_mgr = SessionManager(db)
+        
+        session = session_mgr.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Sessão não encontrada")
+        
+        return {
+            "status": "success",
+            "session_id": session_id,
+            "financials": session.financials or {
+                "total_profit": 0,
+                "total_cost": 0,
+                "total_salary": 0
+            },
+            "addresses_count": len(session.addresses or []),
+            "deliverers_count": len(session.deliverers or []),
+            "last_updated": session.last_updated.isoformat() if session.last_updated else None
+        }
+    except Exception as e:
+        logger.error(f"Erro ao recuperar financeiro: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/financials/calculate/session/{session_id}")
+def calculate_session_financials(
+    session_id: str,
+    routes: List[Dict] = None,
+    deliverers: List[Dict] = None
+):
+    """
+    🧮 Calcular financeiro completo da sessão
+    Input: lista de rotas e entregadores
+    Output: lucro, custo, salário com breakdown detalhado
+    """
+    try:
+        from bot_multidelivery.session_persistence import SessionManager
+        from bot_multidelivery.services.financial_service import enhanced_financial_calculator
+        from bot_multidelivery.database import get_db
+        
+        db = next(get_db())
+        session_mgr = SessionManager(db)
+        
+        # Calcular financeiro
+        result = enhanced_financial_calculator.calculate_session_financials(
+            session_id=session_id,
+            routes=routes or [],
+            deliverers=deliverers or []
+        )
+        
+        # Persistir na sessão
+        session_mgr.save_all_data(
+            session_id=session_id,
+            financials=result["summary"]
+        )
+        
+        return {
+            "status": "success",
+            "financials": result
+        }
+    except Exception as e:
+        logger.error(f"Erro ao calcular financeiro: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/history/sessions")
+def get_history_sessions(limit: int = 100):
+    """
+    📚 Obter histórico COMPLETO (todas as sessões READ_ONLY)
+    Para exibir em HistoryView
+    """
+    try:
+        from bot_multidelivery.session_persistence import SessionManager
+        from bot_multidelivery.database import get_db
+        
+        db = next(get_db())
+        session_mgr = SessionManager(db)
+        
+        history = session_mgr.get_history(limit=limit)
+        
+        return {
+            "status": "success",
+            "total": len(history),
+            "sessions": history
+        }
+    except Exception as e:
+        logger.error(f"Erro ao recuperar histórico: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

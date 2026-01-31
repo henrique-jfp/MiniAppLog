@@ -21,6 +21,7 @@ logger = logging.getLogger("HybridServer")
 from bot_multidelivery.bot import create_application, BotConfig
 # Importa Rotas da API
 from api_routes import router as api_router
+from bot_multidelivery.api_sessions import router as sessions_router
 
 # Variável global para o bot
 bot_app = None
@@ -72,6 +73,7 @@ app = FastAPI(title="BotEntregador MiniApp API", version="1.0.0", lifespan=lifes
 
 # Registra Rotas da API
 app.include_router(api_router)
+app.include_router(sessions_router)
 
 # --- ROTAS DA API ---
 @app.get("/api/status")

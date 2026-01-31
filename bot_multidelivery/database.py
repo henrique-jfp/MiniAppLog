@@ -393,3 +393,13 @@ class DatabaseManager:
 
 # Singleton global
 db_manager = DatabaseManager()
+
+# ==================== DEPENDENCY FOR FASTAPI ====================
+
+def get_db():
+    """Generator para usar em FastAPI dependencies"""
+    db = db_manager.SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

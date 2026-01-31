@@ -457,3 +457,271 @@ class SessionStore:
 
 # Instância global
 session_store = SessionStore()
+
+
+# ========================================================================
+# 🆕 SESSION MANAGER AVANÇADO - NOVO SISTEMA DE PERSISTÊNCIA E REUSO
+# ========================================================================
+
+from enum import Enum
+from datetime import timedelta
+from sqlalchemy import Column, String, DateTime, Enum as SQLEnum, JSON, Float, Boolean
+from sqlalchemy.orm import Session as DBSession
+from bot_multidelivery.database import Base
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class SessionStatus(str, Enum):
+    """Estados da sessão: ciclo de vida completo"""
+    CREATED = "created"           # Sessão criada, não iniciada
+    OPENED = "opened"             # Usuário abriu, pronto para finalizar romaneio
+    STARTED = "started"           # Começou distribuição de entregas
+    IN_PROGRESS = "in_progress"   # Entregas em andamento
+    COMPLETED = "completed"       # Todas entregas finalizadas
+    READ_ONLY = "read_only"       # Histórico congelado, sem alterações
+
+
+class AdvancedSessionModel(Base):
+    """Tabela de Sessões Avançada - núcleo da persistência com reuso"""
+    __tablename__ = "sessions_advanced"
+    
+    id = Column(String(36), primary_key=True)
+    status = Column(SQLEnum(SessionStatus), default=SessionStatus.CREATED)
+    
+    # Metadata
+    created_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    created_by = Column(String(100))
+    
+    # Dados da sessão (JSON para flexibilidade)
+    manifest_data = Column(JSON)  # Dados originais do romaneio importado
+    addresses = Column(JSON)      # Lista de endereços processados
+    deliverers = Column(JSON)     # Entregadores envolvidos
+    route_assignments = Column(JSON)  # Atribuições de rota
+    financials = Column(JSON)     # Dados financeiros da sessão
+    statistics = Column(JSON)     # Estatísticas gerais
+    
+    # Rastreabilidade
+    last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    notes = Column(String(1000), nullable=True)
+    reused = Column(Boolean, default=False)  # Flag se foi reutilizada
+
+
+class SessionManager:
+    """Gerenciador de persistência com reusabilidade SEM re-import"""
+    
+    def __init__(self, db: DBSession):
+        self.db = db
+    
+    # ==================== CRIAR/RECUPERAR SESSÃO ====================
+    
+    def create_session(
+        self,
+        session_id: str,
+        created_by: str,
+        manifest_data: Dict = None
+    ) -> AdvancedSessionModel:
+        """Criar nova sessão vazia, estado CREATED"""
+        try:
+            session = AdvancedSessionModel(
+                id=session_id,
+                status=SessionStatus.CREATED,
+                created_by=created_by,
+                manifest_data=manifest_data or {},
+                addresses=[],
+                deliverers=[],
+                route_assignments=[],
+                financials={"total_profit": 0, "total_cost": 0, "total_salary": 0},
+                statistics={}
+            )
+            self.db.add(session)
+            self.db.commit()
+            logger.info(f"✅ Sessão criada: {session_id}")
+            return session
+        except Exception as e:
+            logger.error(f"❌ Erro ao criar sessão: {e}")
+            self.db.rollback()
+            raise
+    
+    def get_session(self, session_id: str) -> Optional[AdvancedSessionModel]:
+        """Recuperar sessão existente (SEM re-import!)"""
+        session = self.db.query(AdvancedSessionModel).filter(
+            AdvancedSessionModel.id == session_id
+        ).first()
+        
+        if session:
+            logger.info(f"🔍 Sessão encontrada: {session_id} (status: {session.status})")
+        return session
+    
+    def list_sessions(
+        self,
+        status: Optional[SessionStatus] = None,
+        created_by: Optional[str] = None,
+        limit: int = 50
+    ) -> List[AdvancedSessionModel]:
+        """Listar sessões com filtros"""
+        query = self.db.query(AdvancedSessionModel)
+        
+        if status:
+            query = query.filter(AdvancedSessionModel.status == status)
+        if created_by:
+            query = query.filter(AdvancedSessionModel.created_by == created_by)
+        
+        return query.order_by(AdvancedSessionModel.created_at.desc()).limit(limit).all()
+    
+    # ==================== TRANSIÇÕES DE ESTADO ====================
+    
+    def open_session(self, session_id: str) -> AdvancedSessionModel:
+        """Transição: CREATED → OPENED (usuário quer finalizar romaneio SEM re-import)"""
+        session = self.get_session(session_id)
+        if not session:
+            raise ValueError(f"Sessão não encontrada: {session_id}")
+        
+        if session.status not in [SessionStatus.CREATED, SessionStatus.OPENED]:
+            raise ValueError(
+                f"❌ Não pode abrir sessão em status '{session.status.value}'. "
+                f"Use histórico para sessões COMPLETED."
+            )
+        
+        session.status = SessionStatus.OPENED
+        session.last_updated = datetime.utcnow()
+        self.db.commit()
+        logger.info(f"📂 Sessão aberta (SEM re-import): {session_id}")
+        return session
+    
+    def start_session(self, session_id: str) -> AdvancedSessionModel:
+        """Transição: OPENED → STARTED (iniciou distribuição)"""
+        session = self.get_session(session_id)
+        if not session:
+            raise ValueError(f"Sessão não encontrada: {session_id}")
+        
+        if session.status != SessionStatus.OPENED:
+            raise ValueError(f"❌ Sessão deve estar em OPENED para iniciar")
+        
+        session.status = SessionStatus.STARTED
+        session.started_at = datetime.utcnow()
+        session.last_updated = datetime.utcnow()
+        self.db.commit()
+        logger.info(f"🚀 Sessão iniciada: {session_id}")
+        return session
+    
+    def update_progress(
+        self,
+        session_id: str,
+        route_assignments: List[Dict] = None,
+        statistics: Dict = None,
+        financials: Dict = None
+    ) -> AdvancedSessionModel:
+        """Atualizar sessão IN_PROGRESS (salva tudo em tempo real)"""
+        session = self.get_session(session_id)
+        if not session:
+            raise ValueError(f"Sessão não encontrada: {session_id}")
+        
+        session.status = SessionStatus.IN_PROGRESS
+        if route_assignments is not None:
+            session.route_assignments = route_assignments
+        if statistics is not None:
+            session.statistics = statistics
+        if financials is not None:
+            session.financials = financials
+        session.last_updated = datetime.utcnow()
+        self.db.commit()
+        logger.info(f"⏳ Sessão atualizada: {session_id}")
+        return session
+    
+    def complete_session(self, session_id: str) -> AdvancedSessionModel:
+        """Transição: IN_PROGRESS → COMPLETED → READ_ONLY"""
+        session = self.get_session(session_id)
+        if not session:
+            raise ValueError(f"Sessão não encontrada: {session_id}")
+        
+        session.status = SessionStatus.COMPLETED
+        session.completed_at = datetime.utcnow()
+        session.last_updated = datetime.utcnow()
+        self.db.commit()
+        
+        # Transição automática para READ_ONLY
+        self._archive_session(session_id)
+        logger.info(f"✅ Sessão completada: {session_id}")
+        return session
+    
+    def _archive_session(self, session_id: str):
+        """Mover para READ_ONLY (histórico)"""
+        session = self.get_session(session_id)
+        if session:
+            session.status = SessionStatus.READ_ONLY
+            self.db.commit()
+            logger.info(f"📚 Sessão arquivada (READ_ONLY): {session_id}")
+    
+    # ==================== PERSISTÊNCIA DE DADOS ====================
+    
+    def save_all_data(
+        self,
+        session_id: str,
+        addresses: List[Dict] = None,
+        deliverers: List[Dict] = None,
+        route_assignments: List[Dict] = None,
+        financials: Dict = None,
+        statistics: Dict = None
+    ) -> AdvancedSessionModel:
+        """SALVA TUDO: addresses, deliverers, rotas, financeiro, estatísticas"""
+        session = self.get_session(session_id)
+        if not session:
+            raise ValueError(f"Sessão não encontrada: {session_id}")
+        
+        if addresses is not None:
+            session.addresses = addresses
+        if deliverers is not None:
+            session.deliverers = deliverers
+        if route_assignments is not None:
+            session.route_assignments = route_assignments
+        if financials is not None:
+            session.financials = financials
+        if statistics is not None:
+            session.statistics = statistics
+        
+        session.last_updated = datetime.utcnow()
+        self.db.commit()
+        logger.info(f"💾 Todos os dados salvos: {session_id}")
+        return session
+    
+    # ==================== REUSO E CONSULTAS ====================
+    
+    def can_reuse_session(self, session_id: str) -> bool:
+        """Verificar se pode reutilizar SEM re-import"""
+        session = self.get_session(session_id)
+        if not session:
+            return False
+        return session.status in [SessionStatus.CREATED, SessionStatus.OPENED]
+    
+    def get_session_summary(self, session_id: str) -> Dict:
+        """Resumo completo para exibição"""
+        session = self.get_session(session_id)
+        if not session:
+            return {}
+        
+        return {
+            "id": session.id,
+            "status": session.status.value,
+            "created_at": session.created_at.isoformat(),
+            "started_at": session.started_at.isoformat() if session.started_at else None,
+            "completed_at": session.completed_at.isoformat() if session.completed_at else None,
+            "created_by": session.created_by,
+            "addresses_count": len(session.addresses or []),
+            "deliverers_count": len(session.deliverers or []),
+            "financials": session.financials or {},
+            "statistics": session.statistics or {},
+            "reused": session.reused,
+            "last_updated": session.last_updated.isoformat()
+        }
+    
+    def get_history(self, limit: int = 100) -> List[Dict]:
+        """Obter histórico (READ_ONLY)"""
+        sessions = self.list_sessions(
+            status=SessionStatus.READ_ONLY,
+            limit=limit
+        )
+        return [self.get_session_summary(s.id) for s in sessions]

@@ -528,3 +528,138 @@ class FinancialService:
 
 # Instância global do serviço
 financial_service = FinancialService()
+
+
+# ========================================================================
+# 🆕 ENHANCED FINANCIAL CALCULATOR - NOVO SISTEMA DE CÁLCULO
+# ========================================================================
+
+class EnhancedFinancialCalculator:
+    """Calculador financeiro avançado com linkagem completa"""
+    
+    def __init__(self, session_manager=None):
+        self.session_manager = session_manager
+    
+    def calculate_route_profit(
+        self,
+        route_id: str,
+        total_value: float,
+        total_km: float = 0.0,
+        cost_per_km: float = 0.5,
+        surcharge: float = 0.0
+    ) -> Dict:
+        """Lucro da rota = Valor Total - (Combustível + Surcharges)"""
+        fuel_cost = total_km * cost_per_km if total_km > 0 else 0
+        total_costs = fuel_cost + surcharge
+        profit = max(0, total_value - total_costs)
+        
+        return {
+            "route_id": route_id,
+            "total_value": float(total_value),
+            "fuel_cost": float(fuel_cost),
+            "surcharge": float(surcharge),
+            "total_costs": float(total_costs),
+            "profit": float(profit),
+            "total_km": float(total_km),
+            "margin_percent": (profit / total_value * 100) if total_value > 0 else 0,
+            "calculated_at": datetime.utcnow().isoformat()
+        }
+    
+    def calculate_deliverer_salary(
+        self,
+        deliverer_id: str,
+        deliverer_name: str,
+        method: str = "per_package",
+        packages_delivered: int = 0,
+        rate_per_package: float = 2.5,
+        hours_worked: float = 0.0,
+        hourly_rate: float = 20.0,
+        commission_percent: float = 5.0,
+        route_profit: float = 0.0
+    ) -> Dict:
+        """Calcula salário por diferentes métodos"""
+        salary = 0.0
+        
+        if method == "per_package":
+            salary = packages_delivered * rate_per_package
+        elif method == "hourly":
+            salary = hours_worked * hourly_rate
+        elif method == "commission":
+            salary = (route_profit * commission_percent) / 100
+        
+        return {
+            "deliverer_id": deliverer_id,
+            "deliverer_name": deliverer_name,
+            "method": method,
+            "salary": float(salary),
+            "calculated_at": datetime.utcnow().isoformat()
+        }
+    
+    def calculate_session_financials(
+        self,
+        session_id: str,
+        routes: List[Dict],
+        deliverers: List[Dict]
+    ) -> Dict:
+        """Calcula financeiro COMPLETO: lucro, custo, salário"""
+        routes_financial = []
+        deliverers_financial = []
+        
+        total_route_value = 0
+        total_costs = 0
+        total_salaries = 0
+        
+        for route in routes:
+            rf = self.calculate_route_profit(
+                route_id=route.get("id"),
+                total_value=route.get("total_value", 0),
+                total_km=route.get("total_km", 0),
+                cost_per_km=route.get("cost_per_km", 0.5)
+            )
+            routes_financial.append(rf)
+            total_route_value += rf["total_value"]
+            total_costs += rf["total_costs"]
+        
+        for deliverer in deliverers:
+            ds = self.calculate_deliverer_salary(
+                deliverer_id=deliverer.get("id"),
+                deliverer_name=deliverer.get("name", "Unknown"),
+                method=deliverer.get("salary_method", "per_package"),
+                packages_delivered=deliverer.get("packages_delivered", 0),
+                rate_per_package=deliverer.get("rate_per_package", 2.5)
+            )
+            deliverers_financial.append(ds)
+            total_salaries += ds["salary"]
+        
+        net_margin = total_route_value - total_costs - total_salaries
+        
+        result = {
+            "session_id": session_id,
+            "summary": {
+                "total_route_value": float(total_route_value),
+                "total_costs": float(total_costs),
+                "total_salaries": float(total_salaries),
+                "net_margin": float(net_margin),
+                "net_margin_percent": (net_margin / total_route_value * 100) if total_route_value > 0 else 0
+            },
+            "routes": routes_financial,
+            "deliverers": deliverers_financial,
+            "calculated_at": datetime.utcnow().isoformat()
+        }
+        
+        # Persistir se tiver session_manager
+        if self.session_manager:
+            try:
+                self.session_manager.save_all_data(
+                    session_id=session_id,
+                    financials=result["summary"]
+                )
+                logger.info(f"💾 Financeiro salvo para sessão {session_id}")
+            except Exception as e:
+                logger.warning(f"⚠️ Não foi possível persistir financeiro: {e}")
+        
+        return result
+
+
+# Instância global do calculador
+enhanced_financial_calculator = EnhancedFinancialCalculator()

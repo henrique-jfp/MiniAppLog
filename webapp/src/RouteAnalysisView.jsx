@@ -10,6 +10,8 @@ export default function RouteAnalysisView() {
   const [simpleRouteValue, setSimpleRouteValue] = useState('');
   const [simpleAnalysis, setSimpleAnalysis] = useState(null);
   const [simpleLoading, setSimpleLoading] = useState(false);
+  const [mapUrl, setMapUrl] = useState(null);
+  const [mapLoading, setMapLoading] = useState(false);
   
   // ===== IMPORTAÇÃO ROMANEIO (fluxo multi-import) =====
   const [file, setFile] = useState(null);
@@ -73,7 +75,40 @@ export default function RouteAnalysisView() {
     setAddressesText('');
     setSimpleRouteValue('');
     setSimpleAnalysis(null);
+    setMapUrl(null);
     setError(null);
+  };
+
+  const handleGenerateMap = async () => {
+    if (!addressesText.trim()) {
+      setError('Cole os endereços primeiro');
+      return;
+    }
+
+    setMapLoading(true);
+    setError(null);
+
+    const formData = new FormData();
+    formData.append('addresses_text', addressesText);
+
+    try {
+      const res = await fetch('/api/routes/generate-map', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || 'Falha ao gerar mapa');
+      }
+
+      const data = await res.json();
+      setMapUrl(data.map_url);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setMapLoading(false);
+    }
   };
 
   // ====== ABA 2: IMPORTAR ROMANEIO =====
@@ -470,21 +505,38 @@ Rua General Polidoro, 322, 301
                 </p>
               </div>
 
-              {/* MAPA */}
-              {simpleAnalysis.map_url && (
-                <div className="bg-white dark:bg-gray-800 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700">
-                  <div className="bg-gradient-to-r from-purple-500 to-pink-500 p-3 text-white font-bold flex items-center gap-2">
+              {/* MAPA - Lazy Load */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <div className="bg-gradient-to-r from-purple-500 to-pink-500 p-4 text-white font-bold flex items-center justify-between">
+                  <div className="flex items-center gap-2">
                     <Map size={20} />
                     🗺️ Minimapa da Rota
                   </div>
+                  {mapLoading && <span className="text-sm">⏳ Gerando...</span>}
+                </div>
+                
+                {mapUrl ? (
                   <iframe
-                    src={simpleAnalysis.map_url}
+                    src={mapUrl}
                     className="w-full h-96 border-0"
                     title="Mapa da Rota"
                     allowFullScreen=""
                   />
-                </div>
-              )}
+                ) : (
+                  <div className="p-6 text-center">
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                      ⚠️ Geocodificação lenta (3-5 seg por endereço)
+                    </p>
+                    <button
+                      onClick={handleGenerateMap}
+                      disabled={mapLoading}
+                      className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold py-2 px-6 rounded-lg transition-colors"
+                    >
+                      {mapLoading ? '⏳ Gerando Mapa...' : '🗺️ Gerar Mapa'}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

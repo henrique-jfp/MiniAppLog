@@ -959,72 +959,25 @@ async def analyze_addresses(
 ):
     """
     Analisa rota baseada APENAS em lista de endereços (sem arquivo Excel)
+    ⚡ RÁPIDO: Retorna análise instantânea SEM geocodificação
     
     Aceita:
     - Endereços colados (um por linha)
     - Valor total da rota
     
-    Retorna análise completa com tipo de rota, ganho por hora, top drops, mapa, etc
+    Retorna análise completa com tipo de rota, ganho por hora, top drops
     """
     if not addresses_text.strip():
         raise HTTPException(status_code=400, detail="Nenhum endereço informado")
     
     try:
-        # Usa o novo método do RouteAnalyzer
+        # Usa o novo método do RouteAnalyzer (RÁPIDO - sem geo)
         analyzer = RouteAnalyzer()
         result = analyzer.analyze_addresses_from_text(
             addresses_text=addresses_text,
             route_value=route_value,
             base_location=None
         )
-        
-        # ====== GERA MAPA ======
-        # Geocodifica os endereços para mostrar no mapa
-        from bot_multidelivery.services.geocoding_service import GeocodingService
-        geocoder = GeocodingService()
-        
-        stops_with_coords = []
-        lines = [l.strip() for l in addresses_text.strip().split('\n') if l.strip()]
-        
-        for idx, addr_line in enumerate(lines):
-            try:
-                # Tenta geocodificar
-                coords = geocoder.geocode(addr_line)
-                if coords:
-                    stops_with_coords.append((
-                        coords['lat'],
-                        coords['lng'],
-                        addr_line,
-                        1,  # count
-                        'pending'  # status
-                    ))
-            except:
-                pass  # Pula se não conseguir geocodificar
-        
-        # Se não conseguiu geocodificar nada, usa coordenadas aleatórias em Salvador
-        if not stops_with_coords:
-            import random
-            for idx, addr_line in enumerate(lines):
-                # Coordenadas aproximadas de Salvador com pequena variação
-                lat = -13.0035 + random.uniform(-0.05, 0.05)
-                lng = -38.5106 + random.uniform(-0.05, 0.05)
-                stops_with_coords.append((lat, lng, addr_line, 1, 'pending'))
-        
-        # Gera o mapa HTML
-        map_html = MapGenerator.generate_interactive_map(
-            stops=stops_with_coords,
-            entregador_nome=f"Minimapa Análise - {result.total_packages} pacotes",
-            current_stop=-1,
-            total_packages=result.total_packages,
-            total_distance_km=result.total_distance_km,
-            total_time_min=result.estimated_time_minutes,
-            base_location=None
-        )
-        
-        # Salva o mapa
-        filename = f"map_analysis_{uuid.uuid4().hex[:8]}.html"
-        MapGenerator.save_map(map_html, _safe_map_path(filename))
-        map_url = f"/api/maps/{filename}"
         
         # Formata para output rico
         analysis_dict = {
@@ -1080,10 +1033,7 @@ async def analyze_addresses(
                 'concentration_score': f"{result.concentration_score:.1f}/10",
                 'total_distance': f"{result.total_distance_km:.1f} km",
                 'area_coverage': f"{result.area_coverage_km2:.2f} km²"
-            },
-            
-            # ====== MAPA ======
-            'map_url': map_url
+            }
         }
         
         return analysis_dict
@@ -1093,6 +1043,81 @@ async def analyze_addresses(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Erro na análise: {str(e)}")
+
+
+@router.post("/routes/generate-map")
+async def generate_map_for_addresses(
+    addresses_text: str = Form(...)
+):
+    """
+    Gera MAPA para endereços (chamada separada para não bloquear análise)
+    ⚠️ LENTO: Geocodifica todos os endereços (~3-5 seg por endereço)
+    
+    Use APÓS obter a análise rápida!
+    """
+    if not addresses_text.strip():
+        raise HTTPException(status_code=400, detail="Nenhum endereço informado")
+    
+    try:
+        from bot_multidelivery.services.geocoding_service import GeocodingService
+        geocoder = GeocodingService()
+        
+        stops_with_coords = []
+        lines = [l.strip() for l in addresses_text.strip().split('\n') if l.strip()]
+        
+        total_packages = len(lines)
+        
+        # Geocodifica com feedback de progresso
+        for idx, addr_line in enumerate(lines):
+            try:
+                coords = geocoder.geocode(addr_line)
+                if coords:
+                    stops_with_coords.append((
+                        coords['lat'],
+                        coords['lng'],
+                        addr_line,
+                        1,
+                        'pending'
+                    ))
+            except:
+                pass
+        
+        # Se falhou muito, usa coords estimadas
+        if not stops_with_coords or len(stops_with_coords) < len(lines) * 0.3:
+            import random
+            for idx, addr_line in enumerate(lines):
+                # Coordenadas aproximadas de Rio de Janeiro (onde estão os endereços)
+                lat = -22.9570 + random.uniform(-0.02, 0.02)
+                lng = -43.1910 + random.uniform(-0.02, 0.02)
+                stops_with_coords.append((lat, lng, addr_line, 1, 'pending'))
+        
+        # Gera mapa
+        map_html = MapGenerator.generate_interactive_map(
+            stops=stops_with_coords,
+            entregador_nome=f"Minimapa Análise - {total_packages} pacotes",
+            current_stop=-1,
+            total_packages=total_packages,
+            total_distance_km=0,
+            total_time_min=0,
+            base_location=None
+        )
+        
+        # Salva
+        filename = f"map_analysis_{uuid.uuid4().hex[:8]}.html"
+        MapGenerator.save_map(map_html, _safe_map_path(filename))
+        map_url = f"/api/maps/{filename}"
+        
+        return {
+            'map_url': map_url,
+            'geocoded_count': len(stops_with_coords),
+            'total_addresses': total_packages
+        }
+
+    except Exception as e:
+        print(f"Erro ao gerar mapa: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar mapa: {str(e)}")
 
 
 # ============================================

@@ -8,9 +8,9 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 import logging
 
-from services.session_engine import SessionEngine
-from services.barcode_ocr_service import scan_barcode_from_image
-from database import get_db
+from .services.session_engine import SessionEngine
+from .services.barcode_ocr_service import scan_barcode_from_image
+from .database import get_db
 
 logger = logging.getLogger(__name__)
 

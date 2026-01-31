@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 import logging
 import json
 
-from services.session_engine import SessionEngine
-from database import db_manager
+from .services.session_engine import SessionEngine
+from .database import db_manager
 
 logger = logging.getLogger(__name__)
 

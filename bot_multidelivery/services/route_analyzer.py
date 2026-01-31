@@ -1,231 +1,309 @@
 """
-ROUTE ANALYZER - Análise inteligente de rotas da Shopee
-Avalia viabilidade, qualidade, prós/contras de romaneios externos
+ROUTE ANALYZER - Análise inteligente de rotas com suporte a endereços brutos
+Avalia viabilidade, qualidade, prós/contras com detecção automática de tipo
 """
 import math
-from typing import List, Dict, Tuple
-from dataclasses import dataclass
+from typing import List, Dict, Tuple, Optional
+from dataclasses import dataclass, field
+from .address_parser import AddressParser, ParsedAddress
 
 
 @dataclass
 class RouteAnalysis:
-    """Resultado da análise de uma rota"""
+    """Resultado completo da análise de uma rota"""
+    # Básicas
     total_packages: int
     total_stops: int  # Endereços únicos (paradas reais)
     unique_addresses: int  # Endereços únicos
+    
+    # Geográficas
     unique_neighborhoods: int  # Bairros únicos
-    neighborhood_list: List[str]  # Lista de bairros
-    neighborhood_counts: Dict[str, int]  # Contagem por bairro
-    distance_to_first_km: float  # Distância da base até o primeiro ponto
-    route_distance_km: float  # Distância percorrendo a rota
-    total_distance_km: float
-    area_coverage_km2: float
-    density_score: float  # Pacotes por km²
-    concentration_score: float  # 0-10: quão concentrado está
-    estimated_time_minutes: float
-    overall_score: float  # 0-10: score geral
-    recommendation: str  # "Excelente", "Boa", "Média", "Ruim"
-    pros: List[str]
-    cons: List[str]
-    ai_comment: str
-    # Novos campos v5.0
-    route_type: str = "Mista"  # Residencial, Comercial, Mista
-    route_value: float = 0.0
-    hourly_earnings: float = 0.0
-    package_earnings: float = 0.0
-    commercial_count: int = 0
-    vertical_count: int = 0
-    top_drops: List[Tuple[str, int]] = None
+    neighborhood_list: List[str] = field(default_factory=list)
+    neighborhood_counts: Dict[str, int] = field(default_factory=dict)
+    
+    # Distâncias
+    distance_to_first_km: float = 0.0
+    route_distance_km: float = 0.0
+    total_distance_km: float = 0.0
+    area_coverage_km2: float = 0.0
+    
+    # Scores
+    density_score: float = 0.0  # Pacotes por km²
+    concentration_score: float = 0.0  # 0-10: quão concentrado
+    overall_score: float = 0.0  # 0-10: score geral
+    
+    # Timing
+    estimated_time_minutes: float = 0.0
+    
+    # Análise Qualitativa
+    recommendation: str = "Média"
+    pros: List[str] = field(default_factory=list)
+    cons: List[str] = field(default_factory=list)
+    ai_comment: str = ""
+    
+    # ⭐ NOVOS CAMPOS - FINANCEIRO E PERFIL
+    route_value: float = 0.0  # Valor total informado pelo usuário
+    hourly_earnings: float = 0.0  # R$ por hora
+    package_earnings: float = 0.0  # R$ por pacote
+    
+    # Perfil da Rota
+    commercial_count: int = 0  # Quantidade de endereços comerciais
+    vertical_count: int = 0  # Quantidade de apartamentos/condomínios
+    route_type: str = "Mista"  # 🏠 Residencial / 🏢 Comercial / 🏘️ Mista
+    commercial_percentage: float = 0.0  # % de endereços comerciais
+    
+    # Top Drops
+    top_drops: List[Tuple[str, int]] = field(default_factory=list)  # [(rua, count), ...]
+    
+    # Formatado
+    formatted: Dict = field(default_factory=dict)  # Para exibir no frontend
 
 
 class RouteAnalyzer:
-    """Analisa rotas da Shopee antes de aceitar"""
+    """Analisa rotas com detecção inteligente de tipos de endereço"""
     
     def __init__(self):
-        self.avg_speed_kmh = 20  # Velocidade média de moto
+        self.avg_speed_kmh = 20  # Velocidade média de moto/bike
         self.avg_stop_minutes = 3  # Tempo médio por parada
+        self.parser = AddressParser()
+    
+    def analyze_addresses_from_text(
+        self,
+        addresses_text: str,
+        route_value: float = 0.0,
+        base_location: Tuple[float, float] = None
+    ) -> RouteAnalysis:
+        """
+        Analisa lista de endereços em formato texto puro
+        Cada endereço em uma linha
+        """
+        lines = [l.strip() for l in addresses_text.strip().split('\n') if l.strip()]
+        
+        # Converte em formato de delivery para usar analyze_route
+        deliveries = []
+        for i, addr in enumerate(lines):
+            deliveries.append({
+                'id': str(i),
+                'address': addr,
+                'original_address': addr,
+                'lat': 0.0,  # Será geocodificado depois se necessário
+                'lon': 0.0,
+                'bairro': ''
+            })
+        
+        # Usa a análise de rotas (sem coordenadas geográficas)
+        return self.analyze_route(
+            deliveries=deliveries,
+            base_location=base_location,
+            route_value=route_value,
+            skip_geo=True  # Pula geocodificação
+        )
     
     def analyze_route(
         self, 
         deliveries: List[Dict],
         base_location: Tuple[float, float] = None,
-        route_value: float = 0.0  # Novo parâmetro
+        route_value: float = 0.0,
+        skip_geo: bool = False
     ) -> RouteAnalysis:
         """
-        Analisa uma rota e retorna métricas + IA comment
+        Analisa uma rota completa com detecção automática de tipo de endereço
         
         Args:
-            deliveries: Lista de entregas com lat/lon
+            deliveries: Lista de entregas com endereço + opcionalmente lat/lon
             base_location: (lat, lon) da base (opcional)
+            route_value: Valor total da rota informado pelo usuário
+            skip_geo: Se True, não usa coordenadas (análise apenas textual)
         
         Returns:
-            RouteAnalysis com score, pros/cons e comentário IA
+            RouteAnalysis com métricas, score e insights IA
         """
         if not deliveries:
             return self._empty_analysis()
         
-        # Extrai coordenadas
-        coords = []
-        full_addresses = []
-        
-        # Keywords para análise de perfil
-        commercial_keywords = ['loja', 'ltda', 'me', 'eireli', 'comercio', 'sala', 'shopping', 'center', 'plaza', 'mall', 'edificio', 'ed.', 'empresarial', 'office', 'restaurante', 'farmacia', 'mercado']
-        vertical_keywords = ['apto', 'apt', 'bloco', 'bl', 'cond', 'condominio', 'edificio', 'ed.', 'residencial']
-        
+        # ====== PARSING DE ENDEREÇOS ======
+        parsed_addresses: List[ParsedAddress] = []
         commercial_count = 0
         vertical_count = 0
         street_counts = {}  # Para Top Drops
+        unique_addresses_set = set()
         
-        for d in deliveries:
-            lat = d.get('lat')
-            lon = d.get('lon')
-            if lat and lon:
-                coords.append((lat, lon))
+        for delivery in deliveries:
+            raw_addr = delivery.get('address', '')
+            if not raw_addr:
+                continue
             
-            # Análise de texto
-            raw_addr = str(d.get('address', '')).lower() + " " + str(d.get('original_address', '')).lower() + " " + str(d.get('customer', '')).lower()
+            # Parse do endereço
+            parsed = self.parser.parse(raw_addr)
+            parsed_addresses.append(parsed)
             
-            # Conta tipos
-            if any(k in raw_addr for k in commercial_keywords):
+            # Contadores
+            if parsed.is_commercial:
                 commercial_count += 1
-            if any(k in raw_addr for k in vertical_keywords):
+            if parsed.is_vertical:
                 vertical_count += 1
             
-            # Top Drops - Simplificado para Rua
-            # Pega o nome da rua até a primeira vírgula ou número
-            simple_addr = d.get('address', '').split(',')[0].strip()
-            if simple_addr:
-                street_counts[simple_addr] = street_counts.get(simple_addr, 0) + 1
-                
-        # Top 3 Drops
-        top_drops = sorted(street_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+            # Top Drops (por rua)
+            street_key = parsed.street.lower()
+            street_counts[street_key] = street_counts.get(street_key, 0) + 1
+            
+            # Endereços únicos
+            unique_addresses_set.add(raw_addr.lower())
         
-        if not coords:
+        total_packages = len(deliveries)
+        if total_packages == 0:
             return self._empty_analysis()
         
-        # Métricas básicas
-        total_packages = len(deliveries)
-        
-        # Conta endereços e bairros únicos + contagem de pacotes por bairro
-        unique_addresses_set = set()
-        neighborhood_counts = {}
-        
-        for d in deliveries:
-            addr = d.get('address', '').strip().lower()
-            if addr:
-                unique_addresses_set.add(addr)
-            
-            bairro = d.get('bairro', '').strip().title()  # Normaliza capitalização
-            if bairro:
-                neighborhood_counts[bairro] = neighborhood_counts.get(bairro, 0) + 1
-        
         unique_addresses = len(unique_addresses_set)
-        neighborhood_list = sorted(list(neighborhood_counts.keys()))
-        unique_neighborhoods = len(neighborhood_list)
-        total_stops = unique_addresses  # Paradas = endereços únicos
+        commercial_percentage = (commercial_count / total_packages) * 100 if total_packages > 0 else 0
         
-        # Determina Tipo de Rota
-        comm_pct = (commercial_count / total_packages) * 100
-        if comm_pct > 40:
+        # Top 3 Drops
+        top_drops = sorted(street_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+        top_drops_list = [(street.title(), count) for street, count in top_drops]
+        
+        # ====== TIPO DE ROTA ======
+        if commercial_percentage > 40:
             route_type = "🏢 Comercial"
-        elif comm_pct > 15:
+        elif commercial_percentage > 15:
             route_type = "🏘️ Mista"
         else:
             route_type = "🏠 Residencial"
-            
-        # Calcula distância total (rota não otimizada, worst-case)
-        route_distance = self._calculate_total_distance(coords)
         
-        # Distância até o primeiro ponto (se tiver base)
+        # ====== MÉTRICAS ESPACIAIS ======
+        coords = []
+        for d in deliveries:
+            lat = d.get('lat')
+            lon = d.get('lon')
+            if lat and lon and not skip_geo:
+                coords.append((float(lat), float(lon)))
+        
+        route_distance = 0.0
+        area_coverage = 0.1  # Valor padrão
+        density_score = 0.0
+        
+        if coords and len(coords) > 1:
+            route_distance = self._calculate_total_distance(coords)
+            area_coverage = self._calculate_coverage_area(coords)
+            area_coverage = max(0.1, area_coverage)
+            density_score = total_packages / area_coverage
+        else:
+            # Sem coordenadas: estimativa baseada em paradas únicas
+            # Assume ~2km por parada como média conservadora
+            est_distance = unique_addresses * 2
+            area_coverage = (est_distance ** 2) / 10  # Estimativa de cobertura
+            area_coverage = max(0.5, area_coverage)
+            density_score = total_packages / area_coverage
+        
         dist_to_first = 0.0
         if base_location and coords:
             dist_to_first = self._haversine(
                 base_location[0], base_location[1],
                 coords[0][0], coords[0][1]
             )
-            
+        
         total_distance = dist_to_first + route_distance
         
-        # Densidade e Cobertura
-        if len(coords) > 2:
-            coverage = self._calculate_coverage_area(coords)
-        else:
-            coverage = 0.1
-            
-        coverage = max(0.1, coverage)  # Evita div por zero
-        density = total_packages / coverage
-        
         # Score de concentração (0-10)
-        # Mais pacotes em menos área = melhor
-        concentration_score = min(10, (density / 15))  # 150 pacotes/km2 = nota 10
+        # Mais pacotes em menos paradas = melhor concentração
+        avg_packages_per_stop = total_packages / unique_addresses if unique_addresses > 0 else 1
+        concentration_score = min(10, (avg_packages_per_stop / 2) * 10)  # 2 pacotes/parada = nota 10
         
-        # Tempo estimado
-        # Base: 3 min por parada + deslocamento (20km/h media cidade)
-        travel_time = (total_distance / self.avg_speed_kmh) * 60
-        stop_time = total_stops * self.avg_stop_minutes
+        # ====== TIMING ======
+        # Base: 3 min por parada + deslocamento
+        travel_time = (total_distance / self.avg_speed_kmh) * 60 if total_distance > 0 else 0
+        stop_time = unique_addresses * self.avg_stop_minutes
         
-        # Ajuste por verticalização (mais tempo em aptos)
-        vertical_penalty = (vertical_count * 1.5) # +1.5 min por apto
-        total_time = travel_time + stop_time + vertical_penalty
+        # Penalty por verticalização (+1.5 min por apto)
+        vertical_penalty = vertical_count * 1.5
         
-        # Cálculos Financeiros
+        # Penalty por comercial (mais burocra, menos horas úteis)
+        commercial_penalty = (commercial_count * 1.0) if commercial_percentage > 40 else 0
+        
+        total_time_minutes = travel_time + stop_time + vertical_penalty + commercial_penalty
+        total_time_minutes = max(30, total_time_minutes)  # Mínimo 30 min
+        
+        # ====== FINANCEIRO ======
         hourly_earnings = 0.0
         package_earnings = 0.0
-        if route_value > 0 and total_time > 0:
-            hourly_earnings = route_value / (total_time / 60)
+        
+        if route_value > 0 and total_time_minutes > 0:
+            hourly_earnings = route_value / (total_time_minutes / 60)
             package_earnings = route_value / total_packages
-            
-        # Score final
-        # Pesos: Densidade (40%), Distância média (30%), Qtd (30%)
-        avg_dist_between_stops = route_distance / max(1, total_stops)
-        dist_score = max(0, 10 - (avg_dist_between_stops * 5)) # 2km entre paradas = nota 0
         
-        qty_score = min(10, total_packages / 8) # 80 pacotes = nota 10
+        # ====== SCORE FINAL ======
+        # Pesos: Concentração (40%), Quantidade (35%), Tipo (25%)
+        qty_score = min(10, (total_packages / 80) * 10)  # 80 pacotes = nota 10
         
-        overall_score = (concentration_score * 0.4) + (dist_score * 0.3) + (qty_score * 0.3)
+        # Ajuste por tipo de rota
+        type_adjustment = 0
+        if "Comercial" in route_type:
+            type_adjustment = -1.5  # Mais complicado
+        elif "Residencial" in route_type:
+            type_adjustment = 0.5  # Um pouco melhor
+        
+        overall_score = (
+            (concentration_score * 0.4) +
+            (qty_score * 0.35) +
+            (min(10, (density_score / 5)) * 0.25)  # Densidade
+        ) + type_adjustment
+        
         overall_score = round(min(10, max(0, overall_score)), 1)
         
-        # Recomendação
+        # ====== RECOMENDAÇÃO ======
         recommendation = self._get_recommendation(overall_score)
-            
-        # Prós e Contras
+        
+        # ====== PROS E CONTRAS ======
         pros = []
-        if density > 50: pros.append("Alta densidade (muitos pacotes/km²)")
-        if avg_dist_between_stops < 0.5: pros.append("Paradas muito próximas (menos de 500m)")
-        if total_packages > 60: pros.append(f"Volume alto ({total_packages} pacotes)")
-        if coverage < 2: pros.append("Área compacta (fácil de completar)")
-        if hourly_earnings > 25: pros.append(f"Boa média/hora (R$ {hourly_earnings:.2f})")
+        if density_score > 30:
+            pros.append(f"📍 Alta densidade ({density_score:.0f} pacotes/km²)")
+        if avg_packages_per_stop >= 2:
+            pros.append(f"📦 Bom aproveitamento ({avg_packages_per_stop:.1f} pkg/parada)")
+        if total_packages >= 80:
+            pros.append(f"📈 Volume alto ({total_packages} pacotes)")
+        if unique_addresses <= 30:
+            pros.append("🗺️ Poucas paradas, rápido de fechar")
+        if hourly_earnings >= 30 and route_value > 0:
+            pros.append(f"💰 Ótima média horária (R$ {hourly_earnings:.2f}/h)")
         
         cons = []
-        if density < 10: cons.append("Baixa densidade (muita rodagem)")
-        if avg_dist_between_stops > 2: cons.append("Paradas distantes (mais de 2km)")
-        if total_packages < 20: cons.append("Poucos pacotes")
-        if dist_to_first > 15: cons.append(f"Longe da base ({dist_to_first:.1f}km)")
-        if "Comercial" in route_type: cons.append("Muitos endereços comerciais (atenção horário)")
+        if unique_addresses > 80:
+            cons.append(f"⚠️ Muitas paradas ({unique_addresses}), cansativo")
+        if commercial_percentage > 40:
+            cons.append(f"🏢 {commercial_count} endereços comerciais (horário restrito)")
+        if vertical_count > (total_packages * 0.5):
+            cons.append(f"🏢 Muitos apartamentos ({vertical_count}), demora mais")
+        if total_distance > 50:
+            cons.append(f"🛣️ Rota longa ({total_distance:.1f}km)")
+        if hourly_earnings < 20 and route_value > 0:
+            cons.append(f"💸 Ganho baixo por hora (R$ {hourly_earnings:.2f}/h)")
         
-        # Comentário IA Dinâmico
+        # ====== COMENTÁRIO IA DINÂMICO ======
         ai_comment = self._generate_ai_comment(
-            overall_score, 
-            route_type, 
-            route_value, 
-            hourly_earnings, 
-            neighborhood_list
-        )
-            
-        return RouteAnalysis(
+            score=overall_score,
+            route_type=route_type,
+            route_value=route_value,
+            hourly_earnings=hourly_earnings,
+            commercial_pct=commercial_percentage,
             total_packages=total_packages,
-            total_stops=total_stops,
+            unique_stops=unique_addresses,
+            top_drops=top_drops_list
+        )
+        
+        # ====== MONTAGEM DO RESULTADO ======
+        analysis = RouteAnalysis(
+            total_packages=total_packages,
+            total_stops=unique_addresses,
             unique_addresses=unique_addresses,
-            unique_neighborhoods=unique_neighborhoods,
-            neighborhood_list=neighborhood_list,
-            neighborhood_counts=neighborhood_counts,
+            unique_neighborhoods=0,  # Pulando isso por enquanto
+            neighborhood_list=[],
+            neighborhood_counts={},
             distance_to_first_km=dist_to_first,
             route_distance_km=route_distance,
             total_distance_km=total_distance,
-            area_coverage_km2=coverage,
-            density_score=density,
+            area_coverage_km2=area_coverage,
+            density_score=density_score,
             concentration_score=concentration_score,
-            estimated_time_minutes=total_time,
+            estimated_time_minutes=total_time_minutes,
             overall_score=overall_score,
             recommendation=recommendation,
             pros=pros,
@@ -237,73 +315,130 @@ class RouteAnalyzer:
             package_earnings=package_earnings,
             commercial_count=commercial_count,
             vertical_count=vertical_count,
-            top_drops=top_drops
+            commercial_percentage=commercial_percentage,
+            top_drops=top_drops_list
         )
+        
+        # Monta dict formatado para frontend
+        analysis.formatted = self._format_for_display(analysis)
+        
+        return analysis
 
-    def _generate_ai_comment(self, score, r_type, value, hourly, bairros):
-        """Gera texto natural com insights"""
+    def _generate_ai_comment(
+        self,
+        score: float,
+        route_type: str,
+        route_value: float,
+        hourly_earnings: float,
+        commercial_pct: float,
+        total_packages: int,
+        unique_stops: int,
+        top_drops: List[Tuple[str, int]]
+    ) -> str:
+        """Gera comentário dinâmico da IA com insights contextuais"""
         import random
         
-        opener = ""
-        if score >= 9:
+        # Abertura contextualizada
+        if score >= 8.5:
             opener = random.choice([
-                "🎯 Essa é filezionho! A famosa 'mata num tapa'.",
-                "🔥 Rota de ouro. Pega logo antes que alguém veja!",
-                "💰 Excelente para fazer dinheiro rápido e voltar pra base.",
-                "👑 Mandou bem na escolha. Vai contar dinheiro no final."
+                "🎯 **ROTA DE OURO!** A famosa 'mata num tapa'.",
+                "🔥 **EXCELENTE ESCOLHA!** Pega logo antes que alguém veja!",
+                "💰 **PERFEITA PARA LUCRO!** Rápido, concentrado, lucrativo.",
+                "👑 **TOP TIER!** Vai contar dinheiro bem feliz no final.",
             ])
         elif score >= 7:
             opener = random.choice([
-                "✅ Rota honesta. Tem volume e não roda tanto.",
-                "👍 Boa opção pro dia. Dá pra fazer um dinheiro legal.",
-                "💵 Não é perfeita, mas paga as contas tranquilo.",
-                "🎯 Consistente. Vai ser um dia produtivo."
+                "✅ **BOA ROTA.** Volume legal + área compacta.",
+                "👍 **RECOMENDADA.** Paga bem e não tira seu dia.",
+                "💵 **HONESTA.** Não é perfeita, mas vale a pena.",
+                "🎯 **CONSISTENTE.** Dia produtivo à vista.",
             ])
         elif score >= 5:
             opener = random.choice([
-                "⚠️ Rota meio 'osso'. Vai rodar um pouco mais que o ideal.",
-                "😐 Tem que ter paciência. Muita parada pingada.",
-                "🤔 Avalie se o valor compensa o desgaste.",
-                "📊 Na média do mercado, nada excepcional."
+                "⚠️ **ROTA MÉDIA.** Vai ser um dia 'osso'.",
+                "😐 **PACIÊNCIA OBRIGATÓRIA.** Muita parada, pouca concentração.",
+                "🤔 **AVALIE ANTES.** Só se não tiver algo melhor.",
+                "📊 **ACEITÁVEL.** Dentro da média, mas nada especial.",
             ])
         else:
             opener = random.choice([
-                "💣 Bomba! Só pegue se não tiver outra opção.",
-                "🚫 Vai gastar pneu e gasolina à toa. Evite.",
-                "❌ Essa tá com cara de prejuízo.",
-                "⛔ Rota espalhada demais. Não recomendo."
+                "💣 **BOMBA!** Evite se possível.",
+                "🚫 **NÃO RECOMENDADO.** Vai rodar demais.",
+                "❌ **RISCO DE PREJUÍZO.** Cuidado.",
+                "⛔ **ESPALHADA DEMAIS.** Vai cansador.",
             ])
-            
-        # Contexto financeiro vs Tipo
-        finance = ""
-        if value > 0:
-            if hourly > 35:
-                finance = f"O financeiro tá LINDO: **R$ {hourly:.0f}/hora** 💸. "
-            elif hourly > 25:
-                finance = f"O valor tá bom pro tempo estimado: **R$ {hourly:.0f}/hora**. "
-            elif hourly < 18:
-                finance = f"⚠️ O valor tá baixo demais: só **R$ {hourly:.0f}/hora**. Avalie se compensa. "
-            else:
-                finance = f"Paga a média do mercado: **R$ {hourly:.0f}/hora**. "
-                
-        # Alerta Comercial
-        alert = ""
-        if "Comercial" in r_type:
-            alert = "🏢 **ATENÇÃO:** Muita loja/escritório. Tente sair CEDO pra não pegar horário fechado (almoço 12h-14h). "
-        elif "Mista" in r_type:
-            alert = "👁️ Cuidado com horário comercial nas áreas de comércio (12h-14h, 18h+). "
-            
-        # Insights de bairros
-        bairro_txt = ""
-        if bairros:
-            if len(bairros) == 1:
-                bairro_txt = f"Rota concentrada em **{bairros[0]}**, facilita. "
-            elif len(bairros) <= 3:
-                bairro_txt = f"Transita entre **{', '.join(bairros)}**, fácil de navegar. "
-            else:
-                bairro_txt = f"Passa por {len(bairros)} bairros diferentes. Meio espalhada. "
         
-        return f"{opener} {finance}{alert}{bairro_txt}".strip()
+        parts = [opener]
+        
+        # Financeiro
+        if route_value > 0:
+            if hourly_earnings > 40:
+                parts.append(f"💸 **Financeiro brutal:** R$ {hourly_earnings:.0f}/hora! Esse é o tipo que faz a diferença no mês.")
+            elif hourly_earnings > 30:
+                parts.append(f"💰 **Ótima média:** R$ {hourly_earnings:.0f}/hora. Tá na faixa VIP de lucratividade.")
+            elif hourly_earnings > 22:
+                parts.append(f"💵 **Valor ok:** R$ {hourly_earnings:.0f}/hora. Paga as contas tranquilo.")
+            elif hourly_earnings > 15:
+                parts.append(f"📊 **Ganho baixo:** R$ {hourly_earnings:.0f}/hora. Só pega se não tiver opção.")
+            else:
+                parts.append(f"⚠️ **Ganho MUITO baixo:** R$ {hourly_earnings:.0f}/hora. Melhor recusar.")
+        
+        # Tipo de Rota
+        if "Comercial" in route_type:
+            parts.append(f"🏢 **{commercial_pct:.0f}% COMERCIAL:** Muita loja/escritório. Dica de ouro: saia cedo pra não pegar 12h-14h (almoço) ou 18h+ (fechado).")
+            if top_drops:
+                top_street = top_drops[0][0]
+                parts.append(f"📍 **TOP CONCENTRAÇÃO:** Rua {top_street} tem {top_drops[0][1]} pontos. Ali é o 'mata' principal.")
+        elif "Mista" in route_type:
+            parts.append(f"🏘️ **MISTA ({commercial_pct:.0f}% comercial):** Mix de residencial + loja. Cuidado com horário comercial (12h-14h).")
+        else:
+            parts.append(f"🏠 **RESIDENCIAL PURO:** Apartamentos e casas. Tranquilo de horário.")
+        
+        # Volume
+        if total_packages >= 100:
+            parts.append(f"📦 **VOLUME PESADO:** {total_packages} pacotes! Mas em apenas {unique_stops} paradas (ótima concentração).")
+        elif total_packages >= 70:
+            parts.append(f"📈 **BOM VOLUME:** {total_packages} pacotes para fazer a diferença.")
+        elif total_packages < 30:
+            parts.append(f"⚠️ **VOLUME BAIXO:** Só {total_packages} pacotes. Não compensa muito rodar.")
+        
+        # Resumo final
+        if score >= 8:
+            parts.append("**Veredicto:** 🚀 **PEGUE JÁ!** Essa não dura muito no painel.")
+        elif score >= 6:
+            parts.append("**Veredicto:** ✅ **RECOMENDADA.** Dia normal, nada anormal.")
+        else:
+            parts.append("**Veredicto:** ⚠️ **PENSE BEM** antes de confirmar.")
+        
+        return "\n\n".join(parts)
+    
+    def _format_for_display(self, analysis: RouteAnalysis) -> Dict:
+        """Formata análise para exibir no frontend com destaques"""
+        return {
+            "summary": {
+                "value": f"R$ {analysis.route_value:.2f}" if analysis.route_value > 0 else "Não informado",
+                "type": analysis.route_type,
+                "score": f"{analysis.overall_score:.1f}/10",
+                "recommendation": analysis.recommendation,
+                "time": f"{analysis.estimated_time_minutes:.0f} min",
+                "hourly": f"R$ {analysis.hourly_earnings:.2f}/h" if analysis.hourly_earnings > 0 else "---"
+            },
+            "details": {
+                "packages": analysis.total_packages,
+                "stops": analysis.total_stops,
+                "commercial": f"{analysis.commercial_count} ({analysis.commercial_percentage:.0f}%)",
+                "vertical": analysis.vertical_count,
+                "distance": f"{analysis.total_distance_km:.1f} km",
+                "density": f"{analysis.density_score:.0f} pkg/km²"
+            },
+            "top_drops": [
+                {"street": street, "count": count, "percentage": f"{(count/analysis.total_packages)*100:.1f}%"}
+                for street, count in analysis.top_drops[:3]
+            ],
+            "pros": analysis.pros,
+            "cons": analysis.cons,
+            "ai_comment": analysis.ai_comment
+        }
     
     def _calculate_total_distance(self, coords: List[Tuple[float, float]]) -> float:
         """Calcula distância total percorrendo todos os pontos (não otimizado)"""

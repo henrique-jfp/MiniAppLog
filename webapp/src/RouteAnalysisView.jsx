@@ -1,22 +1,29 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileUp, Sparkles, MapPin, AlertCircle, Users, Send, Map } from 'lucide-react';
+import { FileUp, Sparkles, MapPin, AlertCircle, Users, Send, Map, Zap, TrendingUp } from 'lucide-react';
 
 export default function RouteAnalysisView() {
+  // ===== ANÁLISE SIMPLES (por lista de endereços) =====
+  const [viewMode, setViewMode] = useState('simple');  // 'simple' ou 'import'
+  
+  // Simple Analysis
+  const [addressesText, setAddressesText] = useState('');
+  const [simpleRouteValue, setSimpleRouteValue] = useState('');
+  const [simpleAnalysis, setSimpleAnalysis] = useState(null);
+  const [simpleLoading, setSimpleLoading] = useState(false);
+  
+  // ===== IMPORTAÇÃO ROMANEIO (fluxo multi-import) =====
   const [file, setFile] = useState(null);
-  const [analysis, setAnalysis] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [routeValue, setRouteValue] = useState('');
-  const [minimapUrl, setMinimapUrl] = useState(null);
-  const [deliverers, setDeliverers] = useState([]);
-  const [viewMode, setViewMode] = useState('analysis');
+  const [importRouteValue, setImportRouteValue] = useState('');
   const [hasRomaneio, setHasRomaneio] = useState(false);
   const [sessionId, setSessionId] = useState(null);
-  const [sessionStats, setSessionStats] = useState(null);
+  const [importAnalysis, setImportAnalysis] = useState(null);
   const [numDeliverers, setNumDeliverers] = useState(2);
   const [routes, setRoutes] = useState([]);
   const [assignments, setAssignments] = useState({});
-  const [combinedMapUrl, setCombinedMapUrl] = useState(null);
+  
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [deliverers, setDeliverers] = useState([]);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -26,6 +33,51 @@ export default function RouteAnalysisView() {
       .catch(() => setDeliverers([]));
   }, []);
 
+  // ====== ABA 1: ANÁLISE SIMPLES POR ENDEREÇOS ======
+  
+  const handleAnalyzeAddresses = async () => {
+    if (!addressesText.trim() || !simpleRouteValue) {
+      setError('Preencha os endereços e o valor total');
+      return;
+    }
+
+    setSimpleLoading(true);
+    setError(null);
+    setSimpleAnalysis(null);
+
+    const formData = new FormData();
+    formData.append('addresses_text', addressesText);
+    formData.append('route_value', parseFloat(simpleRouteValue));
+
+    try {
+      const res = await fetch('/api/routes/analyze-addresses', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || 'Falha ao analisar');
+      }
+
+      const data = await res.json();
+      setSimpleAnalysis(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSimpleLoading(false);
+    }
+  };
+
+  const handleClearSimple = () => {
+    setAddressesText('');
+    setSimpleRouteValue('');
+    setSimpleAnalysis(null);
+    setError(null);
+  };
+
+  // ====== ABA 2: IMPORTAR ROMANEIO =====
+
   const handleFileChange = (e) => {
     if (e.target.files.length > 0) {
       setFile(e.target.files[0]);
@@ -33,55 +85,11 @@ export default function RouteAnalysisView() {
     }
   };
 
-  const handleAnalyze = async () => {
-    if (!file) return;
-
-    setLoading(true);
-    setError(null);
-    setAnalysis(null);
-
-    const formData = new FormData();
-    formData.append('file', file);
-    if (routeValue) formData.append('route_value', routeValue);
-
-    try {
-      const res = await fetch('/api/route/analyze', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.detail || 'Falha ao analisar rota');
-      }
-
-      const data = await res.json();
-      setAnalysis(data);
-      if (data.minimap_url) {
-        setMinimapUrl(data.minimap_url);
-      }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSaveRouteValue = async () => {
-    if (!routeValue) return;
-    try {
-      await fetch('/api/session/route-value', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: parseFloat(routeValue) })
-      });
-    } catch (err) {
-      setError('Erro ao salvar valor da rota');
-    }
-  };
-
   const handleImport = async () => {
-    if (!file || !routeValue) return;
+    if (!file || !importRouteValue) {
+      setError('Selecione arquivo e informe valor');
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -101,9 +109,10 @@ export default function RouteAnalysisView() {
       }
 
       const data = await res.json();
-      setMinimapUrl(data.minimap_url || null);
       setHasRomaneio(true);
       if (data.session_id) setSessionId(data.session_id);
+      setFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
 
     } catch (err) {
       setError(err.message);
@@ -113,7 +122,10 @@ export default function RouteAnalysisView() {
   };
 
   const handleImportAdditional = async () => {
-    if (!file || !routeValue || !hasRomaneio) return;
+    if (!file) {
+      setError('Selecione arquivo para importar');
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -129,12 +141,13 @@ export default function RouteAnalysisView() {
 
       if (!res.ok) {
         const errData = await res.json();
-        throw new Error(errData.detail || 'Falha ao importar romaneio adicional');
+        throw new Error(errData.detail || 'Falha ao importar adicional');
       }
 
       const data = await res.json();
-      setMinimapUrl(data.minimap_url || null);
       if (data.session_id) setSessionId(data.session_id);
+      setFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (err) {
       setError(err.message);
     } finally {
@@ -152,8 +165,7 @@ export default function RouteAnalysisView() {
         throw new Error(errData.detail || 'Falha ao gerar relatório');
       }
       const data = await res.json();
-      setAnalysis(data);
-      if (data.minimap_url) setMinimapUrl(data.minimap_url);
+      setImportAnalysis(data);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -165,7 +177,6 @@ export default function RouteAnalysisView() {
     setLoading(true);
     setError(null);
     setRoutes([]);
-    setCombinedMapUrl(null);
 
     try {
       const res = await fetch('/api/routes/optimize', {
@@ -177,7 +188,6 @@ export default function RouteAnalysisView() {
       if (!res.ok) {
         const errData = await res.json();
         throw new Error(errData.detail || 'Falha ao otimizar rotas');
-
       }
 
       const data = await res.json();
@@ -199,7 +209,6 @@ export default function RouteAnalysisView() {
 
       if (!res.ok) {
         const errData = await res.json();
-
         throw new Error(errData.detail || 'Falha ao atribuir');
       }
 
@@ -228,22 +237,6 @@ export default function RouteAnalysisView() {
     } finally {
       setLoading(false);
     }
-
-  };
-
-  const handleCombinedMap = async () => {
-    try {
-      const res = await fetch('/api/routes/combined-map');
-      if (!res.ok) {
-        const errData = await res.json();
-
-        throw new Error(errData.detail || 'Falha ao gerar mapa completo');
-      }
-      const data = await res.json();
-      setCombinedMapUrl(data.map_url || null);
-    } catch (err) {
-      setError(err.message);
-    }
   };
 
   const allAssigned = routes.length > 0 && routes.every((r) => assignments[r.route_id]);
@@ -251,310 +244,363 @@ export default function RouteAnalysisView() {
   return (
     <div className="space-y-6 animate-fade-in pb-20">
       {/* Header */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
-        <h2 className="text-xl font-bold flex items-center gap-2 mb-2">
-          <Sparkles className="text-purple-500" /> Análise de Rota com IA
+      <div className="bg-gradient-to-r from-purple-600 to-blue-600 rounded-xl p-6 shadow-lg text-white">
+        <h2 className="text-2xl font-bold flex items-center gap-2 mb-2">
+          <Sparkles size={32} /> Análise de Rota com IA
         </h2>
-
-        <p className="text-sm text-gray-500">
-          Envie o romaneio da Shopee (.xlsx) para inteligência verificar se vale a pena.
+        <p className="text-purple-100">
+          Cole endereços ou importe romaneio. A IA te diz se vale a pena.
         </p>
       </div>
 
-      {/* Abas */}
-      <div className="grid grid-cols-2 gap-2">
+      {/* Abas Principais */}
+      <div className="grid grid-cols-2 gap-3">
         <button
-          onClick={() => setViewMode('analysis')}
-          className={`py-3 rounded-xl font-bold text-sm ${viewMode === 'analysis' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-100 dark:border-gray-700'}`}
+          onClick={() => setViewMode('simple')}
+          className={`py-3 px-4 rounded-xl font-bold text-sm transition-all ${
+            viewMode === 'simple'
+              ? 'bg-purple-600 text-white shadow-lg scale-105'
+              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'
+          }`}
         >
-          Analisar Rota
+          <Sparkles size={18} className="inline mr-2" />
+          Colar Endereços
         </button>
         <button
           onClick={() => setViewMode('import')}
-          className={`py-3 rounded-xl font-bold text-sm ${viewMode === 'import' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-100 dark:border-gray-700'}`}
+          className={`py-3 px-4 rounded-xl font-bold text-sm transition-all ${
+            viewMode === 'import'
+              ? 'bg-blue-600 text-white shadow-lg scale-105'
+              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'
+          }`}
         >
+          <FileUp size={18} className="inline mr-2" />
           Importar Romaneio
         </button>
       </div>
 
-      {/* Upload Area */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
-        <div 
-          onClick={() => fileInputRef.current?.click()}
-          className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-        >
-          <input 
-            type="file" 
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            accept=".xlsx,.xls"
-            className="hidden"
-          />
-          <FileUp size={48} className="mx-auto text-gray-400 mb-4" />
-          {file ? (
-            <div>
-              <p className="font-bold text-green-600">{file.name}</p>
-              <p className="text-sm text-gray-500">{(file.size / 1024).toFixed(1)} KB</p>
-            </div>
-          ) : (
-            <div>
-              <p className="font-medium">Toque para selecionar o arquivo</p>
-              <p className="text-xs text-gray-400 mt-2">Suporta apenas Romaneio Shopee (.xlsx)</p>
+      {/* ERRO GLOBAL */}
+      {error && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 flex gap-3">
+          <AlertCircle className="text-red-600 flex-shrink-0" />
+          <div>
+            <p className="font-bold text-red-800 dark:text-red-300">Erro</p>
+            <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
+          </div>
+        </div>
+      )}
+
+      {/* ===== ABA 1: COLAR ENDEREÇOS ===== */}
+      {viewMode === 'simple' && (
+        <div className="space-y-4">
+          {/* Input Area */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+              📝 Cola os Endereços (um por linha)
+            </label>
+            <textarea
+              value={addressesText}
+              onChange={(e) => setAddressesText(e.target.value)}
+              placeholder={`Rua Principado de Mônaco, 37, Apt 501
+Rua Mena Barreto, 161, Loja BMRIO
+Rua General Polidoro, 322, 301
+...`}
+              className="w-full h-48 p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-sm focus:ring-2 focus:ring-purple-500"
+            />
+            <p className="text-xs text-gray-500 mt-2">
+              {addressesText.trim().split('\n').length} endereço(s) detectado(s)
+            </p>
+          </div>
+
+          {/* Value Input */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+              💰 Valor Total da Rota
+            </label>
+            <input
+              type="number"
+              value={simpleRouteValue}
+              onChange={(e) => setSimpleRouteValue(e.target.value)}
+              placeholder="Ex: 150.00"
+              className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            />
+          </div>
+
+          {/* Botões */}
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={handleAnalyzeAddresses}
+              disabled={simpleLoading || !addressesText.trim() || !simpleRouteValue}
+              className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+            >
+              <Zap size={20} />
+              {simpleLoading ? 'Analisando...' : 'Analisar IA'}
+            </button>
+            <button
+              onClick={handleClearSimple}
+              className="bg-gray-300 hover:bg-gray-400 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white font-bold py-3 rounded-lg transition-colors"
+            >
+              Limpar
+            </button>
+          </div>
+
+          {/* Resultado */}
+          {simpleAnalysis && (
+            <div className="space-y-4">
+              {/* Header com destaque */}
+              <div className={`bg-gradient-to-r rounded-xl p-6 text-white ${
+                simpleAnalysis.header?.['📊 SCORE'] >= 7
+                  ? 'from-green-500 to-emerald-600'
+                  : simpleAnalysis.header?.['📊 SCORE'] >= 5
+                  ? 'from-yellow-500 to-orange-600'
+                  : 'from-red-500 to-pink-600'
+              }`}>
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <p className="text-sm opacity-80">Valor</p>
+                    <p className="text-2xl font-bold">{simpleAnalysis.header?.['💰 VALOR']}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm opacity-80">Tipo</p>
+                    <p className="text-2xl font-bold">{simpleAnalysis.header?.['⭐ TIPO']}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm opacity-80">Score</p>
+                    <p className="text-3xl font-bold">{simpleAnalysis.header?.['📊 SCORE']}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm opacity-80">Ganho/hora</p>
+                    <p className="text-2xl font-bold">{simpleAnalysis.financial?.hourly}</p>
+                  </div>
+                </div>
+                <p className="mt-4 text-sm font-semibold">{simpleAnalysis.header?.['✅ RECOMENDAÇÃO']}</p>
+              </div>
+
+              {/* Top Drops */}
+              {simpleAnalysis.top_drops && simpleAnalysis.top_drops.length > 0 && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                  <h4 className="font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                    <TrendingUp size={20} className="text-orange-500" />
+                    🔥 Top Drops (Ruas com Maior Concentração)
+                  </h4>
+                  <div className="space-y-2">
+                    {simpleAnalysis.top_drops.map((drop, i) => (
+                      <div key={i} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">{drop.emoji}</span>
+                          <div>
+                            <p className="font-bold text-gray-900 dark:text-white">{drop.street}</p>
+                            <p className="text-xs text-gray-500">{drop.count} endereços</p>
+                          </div>
+                        </div>
+                        <p className="text-sm font-bold text-gray-700 dark:text-gray-300">{drop.percentage}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Perfil da Rota */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                <h4 className="font-bold text-gray-900 dark:text-white mb-3">📊 Perfil da Rota</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                    <p className="text-xs text-gray-500">Tipo</p>
+                    <p className="font-bold text-gray-900 dark:text-white">{simpleAnalysis.profile?.type}</p>
+                  </div>
+                  <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                    <p className="text-xs text-gray-500">Comercial</p>
+                    <p className="font-bold text-gray-900 dark:text-white">{simpleAnalysis.profile?.commercial_pct}</p>
+                  </div>
+                  <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                    <p className="text-xs text-gray-500">Pacotes</p>
+                    <p className="font-bold text-gray-900 dark:text-white">{simpleAnalysis.profile?.total_packages}</p>
+                  </div>
+                  <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                    <p className="text-xs text-gray-500">Paradas</p>
+                    <p className="font-bold text-gray-900 dark:text-white">{simpleAnalysis.profile?.unique_stops}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Análise Qualitativa */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                <h4 className="font-bold text-gray-900 dark:text-white mb-3">✅ Prós</h4>
+                <ul className="space-y-2">
+                  {simpleAnalysis.analysis?.pros?.map((pro, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+                      <span className="text-green-500 font-bold mt-0.5">✓</span>
+                      {pro}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                <h4 className="font-bold text-gray-900 dark:text-white mb-3">⚠️ Contras</h4>
+                <ul className="space-y-2">
+                  {simpleAnalysis.analysis?.cons?.map((con, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+                      <span className="text-red-500 font-bold mt-0.5">✗</span>
+                      {con}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Comentário IA */}
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
+                <h4 className="font-bold text-blue-900 dark:text-blue-300 mb-2">🤖 Comentário da IA</h4>
+                <p className="text-sm text-blue-800 dark:text-blue-400 whitespace-pre-wrap leading-relaxed">
+                  {simpleAnalysis.ai_comment}
+                </p>
+              </div>
             </div>
           )}
         </div>
+      )}
 
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          <input
-            type="number"
-            placeholder="Valor total da rota"
-            value={routeValue}
-            onChange={(e) => setRouteValue(e.target.value)}
-            className="col-span-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
-          />
-          <button
-            onClick={handleSaveRouteValue}
-            className="bg-gray-900 text-white rounded-lg text-sm font-semibold"
-          >
-            Salvar
-          </button>
-        </div>
-
-        {viewMode === 'analysis' ? (
-          <div className="mt-4">
-            <button 
-              onClick={handleAnalyze}
-              disabled={!file || loading}
-              className={`w-full py-3 rounded-xl font-bold text-white shadow-lg transition-all ${
-                loading 
-                  ? 'bg-gray-400 cursor-not-allowed' 
-                  : 'bg-purple-600 hover:bg-purple-700 shadow-purple-500/30'
-              }`}
+      {/* ===== ABA 2: IMPORTAR ROMANEIO ===== */}
+      {viewMode === 'import' && (
+        <div className="space-y-4">
+          {/* Upload File */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
             >
-              {loading ? 'Analisando...' : 'Analisar IA'}
-            </button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                accept=".xlsx,.xls"
+                className="hidden"
+              />
+              <FileUp size={48} className="mx-auto text-gray-400 mb-4" />
+              {file ? (
+                <div>
+                  <p className="font-bold text-green-600">{file.name}</p>
+                  <p className="text-sm text-gray-500">{(file.size / 1024).toFixed(1)} KB</p>
+                </div>
+              ) : (
+                <div>
+                  <p className="font-bold text-gray-700 dark:text-gray-300">Clique ou arraste arquivo Excel</p>
+                  <p className="text-sm text-gray-500">Suporta .xlsx ou .xls (Shopee)</p>
+                </div>
+              )}
+            </div>
           </div>
-        ) : (
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <button 
+
+          {/* Value Input */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+              💰 Valor Inicial da Sessão
+            </label>
+            <input
+              type="number"
+              value={importRouteValue}
+              onChange={(e) => setImportRouteValue(e.target.value)}
+              placeholder="Ex: 500.00"
+              className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            />
+          </div>
+
+          {/* Botões Import */}
+          {!hasRomaneio ? (
+            <button
               onClick={handleImport}
-              disabled={!file || loading || !routeValue}
-              className={`py-3 rounded-xl font-bold text-white shadow-lg transition-all ${
-                loading || !routeValue
-                  ? 'bg-gray-400 cursor-not-allowed' 
-                  : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/30'
-              }`}
+              disabled={loading || !file || !importRouteValue}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
             >
+              <FileUp size={20} />
               {loading ? 'Importando...' : 'Importar Romaneio'}
             </button>
-            <button 
-              onClick={handleSessionReport}
-              disabled={loading || !hasRomaneio}
-              className={`py-3 rounded-xl font-bold text-white shadow-lg transition-all ${
-                loading || !hasRomaneio
-                  ? 'bg-gray-400 cursor-not-allowed' 
-                  : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/30'
-              }`}
-            >
-              Gerar Relatório
-            </button>
-          </div>
-        )}
+          ) : (
+            <div className="space-y-3">
+              <button
+                onClick={handleImportAdditional}
+                disabled={loading || !file}
+                className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                <FileUp size={20} />
+                {loading ? 'Importando...' : 'Importar Mais um Romaneio'}
+              </button>
+              <button
+                onClick={handleSessionReport}
+                disabled={loading}
+                className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition-colors"
+              >
+                {loading ? 'Gerando...' : '📊 Gerar Relatório Completo'}
+              </button>
+            </div>
+          )}
 
-        {viewMode === 'import' && hasRomaneio && (
-          <button 
-            onClick={handleImportAdditional}
-            disabled={!file || loading}
-            className={`mt-3 w-full py-3 rounded-xl font-bold text-white shadow-lg transition-all ${
-              loading || !file
-                ? 'bg-gray-400 cursor-not-allowed' 
-                : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/30'
-            }`}
-          >
-            Importar Outro Romaneio
-          </button>
-        )}
+          {/* Resultado da Importação */}
+          {importAnalysis && (
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4">
+              <p className="font-bold text-green-900 dark:text-green-300">✅ Sessão Análise Gerada!</p>
+              <p className="text-sm text-green-800 dark:text-green-400">Próximo: Otimizar e distribuir entregadores</p>
+            </div>
+          )}
 
-        {minimapUrl && (
-          <a 
-            href={minimapUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-4 inline-flex items-center gap-2 text-sm text-blue-600"
-          >
-            <Map size={16} /> Ver minimapa completo
-          </a>
-        )}
+          {/* Otimize Section */}
+          {hasRomaneio && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+                📍 Quantos Entregadores?
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={numDeliverers}
+                  onChange={(e) => setNumDeliverers(e.target.value)}
+                  className="flex-1 p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+                <button
+                  onClick={handleOptimize}
+                  disabled={loading || !hasRomaneio}
+                  className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold px-6 py-3 rounded-lg transition-colors"
+                >
+                  {loading ? '...' : '🚀 Otimizar'}
+                </button>
+              </div>
+            </div>
+          )}
 
-        {error && (
-          <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300 rounded-xl flex items-center gap-3 text-sm">
-            <AlertCircle size={20} />
-            {error}
-          </div>
-        )}
-      </div>
-
-      {/* Otimização e distribuição */}
-      {viewMode === 'import' && (
-      <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
-        <h3 className="font-bold flex items-center gap-2">
-          <Users size={18} className="text-indigo-500" /> Otimizar e Distribuir
-        </h3>
-
-        <div className="grid grid-cols-3 gap-2">
-          <input
-            type="number"
-            min={1}
-            value={numDeliverers}
-            onChange={(e) => setNumDeliverers(e.target.value)}
-            className="col-span-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
-          />
-          <button
-            onClick={handleOptimize}
-            disabled={!hasRomaneio || !routeValue}
-            className={`rounded-lg text-sm font-semibold ${
-              !hasRomaneio || !routeValue ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-indigo-600 text-white'
-            }`}
-          >
-            Otimizar
-          </button>
-        </div>
-
-        {routes.length > 0 && (
-          <div className="space-y-3">
-            {/* Botão Modo Separação */}
-            <button
-              onClick={() => window.location.href = '/?tab=separation'}
-              className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white py-4 rounded-xl font-bold text-lg shadow-xl flex items-center justify-center gap-2 transition-all"
-            >
-              🔄 Iniciar Modo Separação
-            </button>
-
-            {routes.map((r) => (
-              <div key={r.route_id} className="p-3 rounded-lg border border-gray-200 dark:border-gray-700">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold">{r.route_id}</p>
-                    <p className="text-xs text-gray-500">{r.total_packages} pacotes</p>
-                  </div>
-                  <a href={r.map_url} target="_blank" rel="noreferrer" className="text-sm text-blue-600">Mapa</a>
-                </div>
-                <div className="mt-3">
+          {/* Routes & Assignment */}
+          {routes.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="font-bold text-gray-900 dark:text-white">Atribua Entregadores</h3>
+              {routes.map((route, idx) => (
+                <div key={route.route_id} className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                  <p className="font-bold text-gray-900 dark:text-white mb-3">
+                    Rota {idx + 1}: {route.stops} paradas, {route.packages} pacotes
+                  </p>
                   <select
-                    value={assignments[r.route_id] || ''}
-                    onChange={(e) => handleAssign(r.route_id, e.target.value)}
-                    className="px-2 py-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+                    value={assignments[route.route_id] || ''}
+                    onChange={(e) => handleAssign(route.route_id, e.target.value)}
+                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                   >
-                    <option value="">Selecionar entregador</option>
-                    {deliverers.map((d) => (
+                    <option value="">-- Selecione Entregador --</option>
+                    {deliverers.map(d => (
                       <option key={d.id} value={d.id}>{d.name}</option>
                     ))}
                   </select>
                 </div>
-              </div>
-            ))}
-
-            {!allAssigned && (
-              <div className="text-sm text-red-600 dark:text-red-400">
-                Selecione um entregador para cada rota antes de iniciar.
-              </div>
-            )}
-
-            <button
-              onClick={handleStartRoutes}
-              disabled={!allAssigned}
-              className={`w-full py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 ${
-                allAssigned ? 'bg-emerald-600 text-white' : 'bg-gray-400 text-white cursor-not-allowed'
-              }`}
-            >
-              <Send size={14} /> Iniciar Rota (Enviar para Entregadores)
-            </button>
-          </div>
-        )}
-
-        <button
-          onClick={handleCombinedMap}
-          className="w-full bg-gray-900 text-white py-3 rounded-lg text-sm font-semibold"
-        >
-          Gerar mapa completo colorido
-        </button>
-
-        {combinedMapUrl && (
-          <a 
-            href={combinedMapUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-2 text-sm text-blue-600"
-          >
-            <Map size={16} /> Ver mapa completo
-          </a>
-        )}
-      </div>
-      )}
-
-      {/* Results */}
-      {analysis && (
-        <div className="space-y-4 animate-fade-in-up">
-            {/* Score Card */}
-            <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl p-6 text-white shadow-lg">
-                <div className="flex justify-between items-start">
-                    <div>
-                        <p className="text-white/80 text-sm mb-1 uppercase tracking-wider">Score Geral</p>
-                        <h1 className="text-5xl font-black">{analysis.overall_score.toFixed(1)}<span className="text-2xl font-normal opacity-50">/10</span></h1>
-                    </div>
-                    <div className="text-right">
-                        <div className="bg-white/20 px-3 py-1 rounded-full text-xs font-bold inline-block mb-1">
-                            {analysis.recommendation}
-                        </div>
-                        <p className="text-sm opacity-90">{analysis.total_packages} pacotes</p>
-                    </div>
-                </div>
-                <div className="mt-4 bg-black/20 p-3 rounded-lg text-sm italic">
-                    " {analysis.ai_comment} "
-                </div>
+              ))}
+              <button
+                onClick={handleStartRoutes}
+                disabled={!allAssigned || loading}
+                className={`w-full ${allAssigned ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-400'} text-white font-bold py-3 rounded-lg transition-colors`}
+              >
+                {loading ? 'Enviando...' : '✅ Iniciar Rotas'}
+              </button>
             </div>
-
-            {/* Stats Grid */}
-            <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-                    <p className="text-xs text-gray-500 mb-1">Distância Tot.</p>
-                    <p className="text-xl font-bold">{analysis.total_distance_km.toFixed(1)} km</p>
-                </div>
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-                    <p className="text-xs text-gray-500 mb-1">Ganho Est.</p>
-                    <p className="text-xl font-bold text-green-600">R$ {analysis.route_value?.toFixed(2) || '0.00'}</p>
-                </div>
-            </div>
-
-            {/* Neighborhoods */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
-                <h3 className="font-bold mb-4 flex items-center gap-2">
-                    <MapPin size={18} className="text-blue-500" /> Bairros Encontrados
-                </h3>
-                <div className="flex flex-wrap gap-2">
-                    {analysis.neighborhood_list && analysis.neighborhood_list.map((bairro, i) => (
-                        <span key={i} className="px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded-full text-sm">
-                            {bairro}
-                        </span>
-                    ))}
-                </div>
-            </div>
-
-            {/* Pros & Cons */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 <div className="bg-green-50 dark:bg-green-900/10 p-5 rounded-xl">
-                    <h4 className="text-green-700 dark:text-green-400 font-bold mb-2">Pontos Fortes</h4>
-                    <ul className="text-sm space-y-1 text-gray-600 dark:text-gray-300">
-                        {analysis.pros && analysis.pros.map((p, i) => <li key={i}>✅ {p}</li>)}
-                    </ul>
-                 </div>
-                 <div className="bg-red-50 dark:bg-red-900/10 p-5 rounded-xl">
-                    <h4 className="text-red-700 dark:text-red-400 font-bold mb-2">Pontos Fracos</h4>
-                    <ul className="text-sm space-y-1 text-gray-600 dark:text-gray-300">
-                        {analysis.cons && analysis.cons.map((c, i) => <li key={i}>⚠️ {c}</li>)}
-                    </ul>
-                 </div>
-            </div>
+          )}
         </div>
       )}
     </div>

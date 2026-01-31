@@ -952,6 +952,107 @@ async def analyze_route_file(file: UploadFile = File(...), route_value: float = 
         raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
 
 
+@router.post("/routes/analyze-addresses")
+async def analyze_addresses(
+    addresses_text: str = Form(...),
+    route_value: float = Form(0.0)
+):
+    """
+    Analisa rota baseada APENAS em lista de endereços (sem arquivo Excel)
+    
+    Aceita:
+    - Endereços colados (um por linha)
+    - Valor total da rota
+    
+    Retorna análise completa com tipo de rota, ganho por hora, top drops, etc
+    
+    Exemplo:
+    ```
+    addresses_text:
+    Rua Principado de Mônaco, 37, Apt 501
+    Rua Mena Barreto, 161, Loja BMRIO
+    Rua General Polidoro, 322, 301
+    ...
+    ```
+    """
+    if not addresses_text.strip():
+        raise HTTPException(status_code=400, detail="Nenhum endereço informado")
+    
+    try:
+        # Usa o novo método do RouteAnalyzer
+        analyzer = RouteAnalyzer()
+        result = analyzer.analyze_addresses_from_text(
+            addresses_text=addresses_text,
+            route_value=route_value,
+            base_location=None  # Sem base para essa análise
+        )
+        
+        # Formata para output rico
+        analysis_dict = {
+            # Header com valores em destaque
+            'header': {
+                '💰 VALOR': f"R$ {result.route_value:.2f}" if result.route_value > 0 else "N/A",
+                '⭐ TIPO': result.route_type,
+                '📊 SCORE': f"{result.overall_score:.1f}/10",
+                '✅ RECOMENDAÇÃO': result.recommendation,
+                '⏱️ TEMPO EST': f"{result.estimated_time_minutes:.0f} min"
+            },
+            
+            # Financeiro em destaque
+            'financial': {
+                'hourly': f"R$ {result.hourly_earnings:.2f}/hora" if result.hourly_earnings > 0 else "N/A",
+                'per_package': f"R$ {result.package_earnings:.2f}/pkg" if result.package_earnings > 0 else "N/A"
+            },
+            
+            # Perfil da Rota
+            'profile': {
+                'type': result.route_type,
+                'commercial_count': result.commercial_count,
+                'commercial_pct': f"{result.commercial_percentage:.1f}%",
+                'vertical_count': result.vertical_count,
+                'total_packages': result.total_packages,
+                'unique_stops': result.total_stops
+            },
+            
+            # Top 3 Drops (ruas com maior concentração)
+            'top_drops': [
+                {
+                    'rank': i + 1,
+                    'street': street,
+                    'count': count,
+                    'percentage': f"{(count/result.total_packages)*100:.1f}%",
+                    'emoji': '🔥' if i == 0 else '🎯' if i == 1 else '⭐'
+                }
+                for i, (street, count) in enumerate(result.top_drops[:3])
+            ],
+            
+            # Análise Qualitativa
+            'analysis': {
+                'pros': result.pros,
+                'cons': result.cons,
+            },
+            
+            # IA Comment (o mais importante!)
+            'ai_comment': result.ai_comment,
+            
+            # Métricas Complementares
+            'metrics': {
+                'density': f"{result.density_score:.0f} pkg/km²",
+                'concentration_score': f"{result.concentration_score:.1f}/10",
+                'total_distance': f"{result.total_distance_km:.1f} km",
+                'area_coverage': f"{result.area_coverage_km2:.2f} km²"
+            }
+        }
+        
+        return analysis_dict
+
+    except Exception as e:
+        print(f"Erro ao analisar endereços: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Erro na análise: {str(e)}")
+
+
 # ============================================
 # 🔄 MODO SEPARAÇÃO - Bipagem de Pacotes
 # ============================================

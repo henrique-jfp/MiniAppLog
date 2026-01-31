@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Users, UserPlus, Trash2, Shield, Truck } from 'lucide-react';
+import { Users, UserPlus, Trash2, Shield, Truck, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
 
 export default function TeamView() {
   const [team, setTeam] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [newMember, setNewMember] = useState({ name: '', telegram_id: '', is_partner: false });
+  const [pendingTransfers, setPendingTransfers] = useState([]);
 
   // Fetch Team
   const refreshTeam = () => {
@@ -24,6 +25,7 @@ export default function TeamView() {
 
   useEffect(() => {
     refreshTeam();
+    refreshTransfers();
   }, []);
 
   const handleAdd = async (e) => {
@@ -53,6 +55,42 @@ export default function TeamView() {
     
     await fetch(`/api/admin/team/${id}`, { method: 'DELETE' });
     refreshTeam();
+  };
+
+  const refreshTransfers = async () => {
+    try {
+      const res = await fetch('/api/delivery/pending-transfers');
+      const data = await res.json();
+      setPendingTransfers(data.transfers || []);
+    } catch (err) {
+      console.error('Erro ao buscar transferências:', err);
+    }
+  };
+
+  const handleApproveTransfer = async (transferId, approved, rejectionReason = '') => {
+    try {
+      const adminId = 123456; // TODO: pegar do contexto
+      const adminName = 'Admin'; // TODO: pegar do contexto
+      
+      const res = await fetch('/api/delivery/transfer-approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transfer_id: transferId,
+          approved,
+          admin_id: adminId,
+          admin_name: adminName,
+          rejection_reason: rejectionReason
+        })
+      });
+
+      if (res.ok) {
+        alert(approved ? 'Transferência aprovada!' : 'Transferência rejeitada!');
+        refreshTransfers();
+      }
+    } catch (err) {
+      alert('Erro ao processar transferência');
+    }
   };
 
   return (
@@ -114,6 +152,52 @@ export default function TeamView() {
           ))
         )}
       </div>
+
+      {/* Painel de Transferências Pendentes */}
+      {pendingTransfers.length > 0 && (
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-xl p-6 border border-yellow-200 dark:border-yellow-800">
+          <h3 className="text-lg font-bold flex items-center gap-2 mb-4 text-yellow-800 dark:text-yellow-200">
+            <AlertCircle size={20} /> Solicitações de Transferência Pendentes ({pendingTransfers.length})
+          </h3>
+          <div className="space-y-3">
+            {pendingTransfers.map((transfer) => (
+              <div key={transfer.id} className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <p className="font-semibold text-sm">
+                      {transfer.from_deliverer.name} → {transfer.to_deliverer.name}
+                    </p>
+                    <p className="text-xs text-gray-500">{transfer.package_count} pacote(s)</p>
+                  </div>
+                  <span className="text-xs bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300 px-2 py-1 rounded">
+                    Pendente
+                  </span>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                  <strong>Motivo:</strong> {transfer.reason}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleApproveTransfer(transfer.id, true)}
+                    className="flex-1 flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-semibold transition"
+                  >
+                    <CheckCircle size={16} /> Aprovar
+                  </button>
+                  <button
+                    onClick={() => {
+                      const reason = prompt('Motivo da rejeição (opcional):');
+                      handleApproveTransfer(transfer.id, false, reason || '');
+                    }}
+                    className="flex-1 flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg text-sm font-semibold transition"
+                  >
+                    <XCircle size={16} /> Rejeitar
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Modal Add */}
       {showModal && (

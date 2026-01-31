@@ -4,6 +4,7 @@ import MapView from './MapView'
 import FinancialView from './FinancialView'
 import TeamView from './TeamView'
 import RouteAnalysisView from './RouteAnalysisView'
+import SeparationMode from './SeparationMode'
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
@@ -17,6 +18,12 @@ function App() {
   // 1. Inicialização e Auth
   useEffect(() => {
     let userId = null;
+
+    // Verifica query param ?tab= para navegação direta
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('tab')) {
+      setActiveTab(params.get('tab'));
+    }
 
     // Tenta pegar do Telegram WebApp
     if (window.Telegram && window.Telegram.WebApp) {
@@ -268,6 +275,14 @@ function App() {
         return (
              <div className="h-full overflow-y-auto p-4">
                  <RouteAnalysisView />
+             </div>
+        )
+    }
+
+    if (activeTab === 'separation') {
+        return (
+             <div className="h-full overflow-y-auto">
+                 <SeparationMode />
              </div>
         )
     }

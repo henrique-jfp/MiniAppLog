@@ -326,6 +326,14 @@ export default function RouteAnalysisView() {
 
         {routes.length > 0 && (
           <div className="space-y-3">
+            {/* Botão Modo Separação */}
+            <button
+              onClick={() => window.location.href = '/?tab=separation'}
+              className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white py-4 rounded-xl font-bold text-lg shadow-xl flex items-center justify-center gap-2 transition-all"
+            >
+              🔄 Iniciar Modo Separação
+            </button>
+
             {routes.map((r) => (
               <div key={r.route_id} className="p-3 rounded-lg border border-gray-200 dark:border-gray-700">
                 <div className="flex items-center justify-between">

@@ -96,8 +96,9 @@ async def get_me(user_id: int):
 
 
 
+
 def get_current_week_financials():
-    """Lê os relatórios financeiros da semana atual"""
+    """Lê os relatórios financeiros da semana atual e soma a sessão ativa (projeção)"""
     from datetime import datetime, timedelta
     
     # Define início da semana (Segunda-feira)
@@ -114,7 +115,7 @@ def get_current_week_financials():
     total_profit = 0.0
     deliverer_earnings = {}
     
-    # Se temos DB, buscar do DB. Se não, JSON.
+    # 1. Tentar buscar dados consolidados do Banco de Dados
     try:
         if data_store.using_database:
             from bot_multidelivery.database import db_manager, DailyFinancialReportDB
@@ -133,7 +134,7 @@ def get_current_week_financials():
                         for name, value in r.deliverer_breakdown.items():
                             deliverer_earnings[name] = deliverer_earnings.get(name, 0) + value
         else:
-            # Lógica JSON legada
+            # Fallback para JSON (se o user não tiver migrado totalmente)
             import glob
             base_path = "data/financial/daily"
             
@@ -155,8 +156,43 @@ def get_current_week_financials():
                         continue
                         
     except Exception as e:
-        print(f"Erro ao calcular financial: {e}")
-                
+        print(f"Erro ao buscar histórico financeiro: {e}")
+
+    # 2. Somar dados da SESSÃO ATIVA (Em tempo real)
+    # Isso resolve o problema de "não vejo saldo" enquanto o dia não fecha
+    try:
+        active_session = session_manager.get_current_session()
+        if active_session:
+            # Verifica se a sessão é desta semana
+            try:
+                s_date = datetime.strptime(active_session.date, '%Y-%m-%d')
+                if start_week <= s_date <= end_week:
+                    # PROJEÇÃO SIMPLIFICADA (Valores default de mercado se não configurado)
+                    AVG_REVENUE_PER_PKG = 8.00 
+                    AVG_COST_PER_PKG = 4.50 
+                    
+                    session_revenue = active_session.total_delivered * AVG_REVENUE_PER_PKG
+                    session_cost = 0.0
+                    
+                    for route in active_session.routes:
+                        if route.assigned_to_name:
+                            # Custo do entregador (apenas pacotes entregues contam)
+                            route_cost = route.delivered_count * AVG_COST_PER_PKG
+                            session_cost += route_cost
+                            
+                            # Adiciona ao breakdown
+                            deliverer_earnings[route.assigned_to_name] = deliverer_earnings.get(route.assigned_to_name, 0) + route_cost
+                    
+                    # Atualiza totais
+                    total_revenue += session_revenue
+                    total_costs += session_cost
+                    total_profit += (session_revenue - session_cost)
+                    
+            except ValueError:
+                pass # Data inválida na sessão, ignora
+    except Exception as e:
+        print(f"Erro ao processar sessão ativa no financeiro: {e}")
+
     return {
         "dates": week_dates,
         "company": {

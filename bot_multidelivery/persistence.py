@@ -179,23 +179,31 @@ class DataStore:
         
         self.save_deliverers(deliverers)
         
+
     def delete_deliverer(self, telegram_id: int):
         """Remove um entregador permanentemente"""
         if self.using_database:
             try:
                 print(f"🗑️ Removendo entregador {telegram_id} do PostgreSQL...")
                 with db_manager.get_session() as session:
-                    # Deleta registro da tabela deliverers.
+                    # 1. Desvincular de Rotas Ativas/Passadas
+                    session.query(RouteDB).filter_by(assigned_to_telegram_id=telegram_id).update({"assigned_to_telegram_id": None})
+                    # 2. Desvincular de Pacotes
+                    session.query(PackageDB).filter_by(assigned_to_telegram_id=telegram_id).update({"assigned_to_telegram_id": None})
+                    
+                    # 3. Deleta registro da tabela deliverers
                     rows = session.query(DelivererDB).filter_by(telegram_id=telegram_id).delete()
                     print(f"✅ Entregador {telegram_id} removido ({rows} linhas afetadas)")
             except Exception as e:
                 print(f"❌ Erro ao remover do PostgreSQL: {e}")
+                raise e
         else:
             # Fallback JSON
             deliverers = self.load_deliverers()
             new_list = [d for d in deliverers if d.telegram_id != telegram_id]
             if len(new_list) < len(deliverers):
                 self.save_deliverers(new_list)
+
     
     def get_deliverer(self, telegram_id: int) -> Optional[Deliverer]:
         """Busca entregador por ID"""

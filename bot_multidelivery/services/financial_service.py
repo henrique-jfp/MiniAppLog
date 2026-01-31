@@ -176,10 +176,50 @@ class FinancialService:
             expenses=expenses or []
         )
         
-        # Salva relatório
-        filename = self.daily_dir / f"daily_{date_str}.json"
-        with open(filename, 'w', encoding='utf-8') as f:
-            json.dump(report.to_dict(), f, indent=2, ensure_ascii=False)
+
+        # Salva relatório em JSON (Legado/Backup)
+        try:
+            filename = self.daily_dir / f"daily_{date_str}.json"
+            with open(filename, 'w', encoding='utf-8') as f:
+                json.dump(report.to_dict(), f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"Erro salvando JSON financeiro: {e}")
+
+        # Salva relatório no PostgreSQL (Principal)
+        try:
+            from bot_multidelivery.database import db_manager, DailyFinancialReportDB
+            
+            with db_manager.get_session() as session:
+                # Upsert (Update or Insert)
+                existing = session.query(DailyFinancialReportDB).filter_by(date=date_str).first()
+                
+                if existing:
+                    existing.revenue = revenue
+                    existing.delivery_costs = total_delivery_costs
+                    existing.other_costs = other_costs
+                    existing.net_profit = net_profit
+                    existing.total_packages = total_packages
+                    existing.total_deliveries = total_deliveries
+                    existing.deliverer_breakdown = deliverer_costs
+                    existing.expenses = expenses or []
+                    print(f"🔄 Financeiro atualizado no DB para {date_str}")
+                else:
+                    new_db_report = DailyFinancialReportDB(
+                        date=date_str,
+                        revenue=revenue,
+                        delivery_costs=total_delivery_costs,
+                        other_costs=other_costs,
+                        net_profit=net_profit,
+                        total_packages=total_packages,
+                        total_deliveries=total_deliveries,
+                        deliverer_breakdown=deliverer_costs,
+                        expenses=expenses or []
+                    )
+                    session.add(new_db_report)
+                    print(f"✅ Novo registro financeiro criado no DB para {date_str}")
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Não foi possível salvar financeiro no banco de dados: {e}")
         
         logger.info(f"Fechamento diário salvo: {date_str} | Lucro: R$ {net_profit:.2f}")
         return report

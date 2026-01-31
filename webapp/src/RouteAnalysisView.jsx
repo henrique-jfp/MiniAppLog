@@ -86,7 +86,7 @@ export default function RouteAnalysisView() {
     formData.append('file', file);
 
     try {
-      const res = await fetch('/api/session/romaneio/import', {
+      const res = await fetch('/api/romaneio/import', {
         method: 'POST',
         body: formData,
       });

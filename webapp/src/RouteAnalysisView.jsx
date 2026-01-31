@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileUp, Sparkles, MapPin, AlertCircle, Users, Send, Map, Zap, TrendingUp, Camera } from 'lucide-react';
-import BarcodeScanner from './components/BarcodeScanner';
+import { FileUp, Sparkles, MapPin, AlertCircle, Users, Send, Map, TrendingUp } from 'lucide-react';
 
 export default function RouteAnalysisView() {
   // ===== ANÁLISE SIMPLES (por lista de endereços) =====
@@ -363,25 +362,6 @@ Rua General Polidoro, 322, 301
             />
           </div>
 
-          {/* Botão Scanner + Análise */}
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={() => setShowScanner(true)}
-              className="py-3 px-4 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition"
-            >
-              <Camera className="w-4 h-4" />
-              📷 Scanner
-            </button>
-            <button
-              onClick={handleAnalyzeAddresses}
-              disabled={simpleLoading || !addressesText.trim() || !simpleRouteValue}
-              className="py-3 px-4 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition"
-            >
-              <Sparkles className="w-4 h-4" />
-              {simpleLoading ? 'Analisando...' : 'Analisar'}
-            </button>
-          </div>
-
           {/* Botões */}
           <div className="grid grid-cols-2 gap-3">
             <button
@@ -389,8 +369,8 @@ Rua General Polidoro, 322, 301
               disabled={simpleLoading || !addressesText.trim() || !simpleRouteValue}
               className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
             >
-              <Zap size={20} />
-              {simpleLoading ? 'Analisando...' : 'Analisar IA'}
+              <Sparkles size={20} />
+              {simpleLoading ? 'Analisando...' : 'Analisar'}
             </button>
             <button
               onClick={handleClearSimple}

@@ -569,12 +569,6 @@ function App() {
               onClick={() => setActiveTab('financial')} 
             />
             <TabButton 
-              icon={<Users size={22} />} 
-              label="Perfil" 
-              isActive={activeTab === 'profile'} 
-              onClick={() => setActiveTab('dashboard')}
-            />
-            <TabButton 
               icon={<Archive size={22} />} 
               label="Histórico" 
               isActive={activeTab === 'history'} 

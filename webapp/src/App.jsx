@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { LayoutDashboard, Package, Map as MapIcon, Users, RefreshCw, Navigation, DollarSign } from 'lucide-react'
 import MapView from './MapView'
 import FinancialView from './FinancialView'
+import TeamView from './TeamView'
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
@@ -266,6 +267,10 @@ function App() {
 
     if (activeTab === 'financial') {
         return <FinancialView data={financialData} />
+    }
+    
+    if (activeTab === 'team') {
+        return <TeamView />;
     }
 
     return <div className="p-10 text-center text-gray-500">Funcionalidade em desenvolvimento 🚧</div>

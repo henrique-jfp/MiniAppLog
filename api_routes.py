@@ -1,10 +1,56 @@
 import os
 import json
 from fastapi import APIRouter, HTTPException
-from bot_multidelivery.config import BotConfig
-from bot_multidelivery.session import session_manager
+from pydantic import BaseModel
+from bot_multidelivery.persistence import data_store
+from bot_multidelivery.services.deliverer_service import DelivererService
 
-router = APIRouter(prefix="/api")
+class DelivererInput(BaseModel):
+    name: str
+    telegram_id: int
+    is_partner: bool = False
+
+@router.get("/admin/team")
+async def get_team():
+    """Lista todos os entregadores cadastrados"""
+    deliverers = data_store.load_deliverers()
+    return [
+        {
+            "id": d.telegram_id,
+            "name": d.name,
+            "is_partner": d.is_partner,
+            "deliveries": d.total_deliveries,
+            "earnings": d.total_earnings
+        }
+        for d in deliverers
+    ]
+
+@router.post("/admin/team")
+async def add_member(data: DelivererInput):
+    """Adiciona novo membro à equipe"""
+    try:
+        DelivererService.add_deliverer(
+            telegram_id=data.telegram_id,
+            name=data.name,
+            is_partner=data.is_partner
+        )
+        return {"status": "success", "message": f"{data.name} adicionado!"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.delete("/admin/team/{user_id}")
+async def remove_member(user_id: int):
+    """Remove membro (apenas lógica simples por enquanto)"""
+    # TODO: Implementar soft delete real no service
+    # Por enquanto, carregamos, filtramos e salvamos
+    deliverers = data_store.load_deliverers()
+    new_list = [d for d in deliverers if d.telegram_id != user_id]
+    
+    if len(new_list) < len(deliverers):
+        data_store.save_deliverers(new_list)
+        return {"status": "success"}
+    
+    raise HTTPException(status_code=404, detail="Entregador não encontrado")
 
 @router.get("/auth/me")
 async def get_me(user_id: int):

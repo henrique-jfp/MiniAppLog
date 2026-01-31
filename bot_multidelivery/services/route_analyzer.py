@@ -247,49 +247,63 @@ class RouteAnalyzer:
         opener = ""
         if score >= 9:
             opener = random.choice([
-                "Essa é filezionho! A famosa 'mata num tapa'.",
-                "Rota de ouro. Pega logo antes que alguém veja!"
-                "Excelente para fazer dinheiro rápido e voltar pra base."
+                "🎯 Essa é filezionho! A famosa 'mata num tapa'.",
+                "🔥 Rota de ouro. Pega logo antes que alguém veja!",
+                "💰 Excelente para fazer dinheiro rápido e voltar pra base.",
+                "👑 Mandou bem na escolha. Vai contar dinheiro no final."
             ])
         elif score >= 7:
             opener = random.choice([
-                "Rota honesta. Tem volume e não roda tanto.",
-                "Boa opção pro dia. Dá pra fazer um dinheiro legal.",
-                "Não é perfeita, mas paga as contas tranquilo."
+                "✅ Rota honesta. Tem volume e não roda tanto.",
+                "👍 Boa opção pro dia. Dá pra fazer um dinheiro legal.",
+                "💵 Não é perfeita, mas paga as contas tranquilo.",
+                "🎯 Consistente. Vai ser um dia produtivo."
             ])
         elif score >= 5:
             opener = random.choice([
-                "Rota meio 'osso'. Vai rodar um pouco mais que o ideal.",
-                "Tem que ter paciência. Muita parada pingada.",
-                "Avalie se o valor compensa o desgaste."
+                "⚠️ Rota meio 'osso'. Vai rodar um pouco mais que o ideal.",
+                "😐 Tem que ter paciência. Muita parada pingada.",
+                "🤔 Avalie se o valor compensa o desgaste.",
+                "📊 Na média do mercado, nada excepcional."
             ])
         else:
             opener = random.choice([
-                "Bomba! Só pegue se não tiver outra opção.",
-                "Vai gastar pneu e gasolina à toa. Evite.",
-                "Essa tá com cara de prejuízo."
+                "💣 Bomba! Só pegue se não tiver outra opção.",
+                "🚫 Vai gastar pneu e gasolina à toa. Evite.",
+                "❌ Essa tá com cara de prejuízo.",
+                "⛔ Rota espalhada demais. Não recomendo."
             ])
             
         # Contexto financeiro vs Tipo
         finance = ""
         if value > 0:
-            if hourly > 30:
-                finance = f"O financeiro tá TOP (R$ {hourly:.0f}/h). "
-            elif hourly < 15:
-                finance = f"O valor tá baixo pro tempo estimado (só R$ {hourly:.0f}/h). "
+            if hourly > 35:
+                finance = f"O financeiro tá LINDO: **R$ {hourly:.0f}/hora** 💸. "
+            elif hourly > 25:
+                finance = f"O valor tá bom pro tempo estimado: **R$ {hourly:.0f}/hora**. "
+            elif hourly < 18:
+                finance = f"⚠️ O valor tá baixo demais: só **R$ {hourly:.0f}/hora**. Avalie se compensa. "
             else:
-                finance = f"Paga a média do mercado. "
+                finance = f"Paga a média do mercado: **R$ {hourly:.0f}/hora**. "
                 
         # Alerta Comercial
         alert = ""
         if "Comercial" in r_type:
-            alert = "⚠️ Atenção: Muita loja/sala. Tente sair cedo pra não pegar horário fechado. "
+            alert = "🏢 **ATENÇÃO:** Muita loja/escritório. Tente sair CEDO pra não pegar horário fechado (almoço 12h-14h). "
         elif "Mista" in r_type:
-            alert = "👁️ Cuidado com entregas em horário de almoço nas áreas comerciais. "
+            alert = "👁️ Cuidado com horário comercial nas áreas de comércio (12h-14h, 18h+). "
             
-        bairro_txt = f"Foco em {bairros[0]}." if bairros else ""
+        # Insights de bairros
+        bairro_txt = ""
+        if bairros:
+            if len(bairros) == 1:
+                bairro_txt = f"Rota concentrada em **{bairros[0]}**, facilita. "
+            elif len(bairros) <= 3:
+                bairro_txt = f"Transita entre **{', '.join(bairros)}**, fácil de navegar. "
+            else:
+                bairro_txt = f"Passa por {len(bairros)} bairros diferentes. Meio espalhada. "
         
-        return f"{opener} {finance}{alert}{bairro_txt}"
+        return f"{opener} {finance}{alert}{bairro_txt}".strip()
     
     def _calculate_total_distance(self, coords: List[Tuple[float, float]]) -> float:
         """Calcula distância total percorrendo todos os pontos (não otimizado)"""

@@ -23,6 +23,7 @@ class PackageStatus(Enum):
     IN_TRANSIT = "em_transito"
     DELIVERED = "entregue"
     FAILED = "falhou"
+    TRANSFER_REQUEST = "solicitacao_transferencia"
 
 
 @dataclass
@@ -38,6 +39,9 @@ class Package:
     delivered_at: Optional[datetime] = None
     delivery_time_minutes: Optional[int] = None
     notes: str = ""
+    barcode: Optional[str] = None  # Código de barras do pacote
+    scanned_at: Optional[datetime] = None  # Quando foi bipado na separação
+    sequence_in_route: Optional[int] = None  # Ordem de entrega na rota
     
     @property
     def priority_weight(self) -> float:

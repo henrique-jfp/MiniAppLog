@@ -1,23 +1,91 @@
 import os
 import json
-from fastapi import APIRouter, HTTPException
+import tempfile
+import shutil
+import uuid
+from datetime import datetime
+from typing import Optional, List, Dict
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from telegram import Bot
 from bot_multidelivery.config import BotConfig
-from bot_multidelivery.session import session_manager
+from bot_multidelivery.session import session_manager, Romaneio, Route
 from bot_multidelivery.persistence import data_store
 from bot_multidelivery.services.deliverer_service import DelivererService
 from bot_multidelivery.services.route_analyzer import RouteAnalyzer
 from bot_multidelivery.parsers.shopee_parser import ShopeeRomaneioParser
-from fastapi import UploadFile, File
-import tempfile
-import shutil
+from bot_multidelivery.clustering import DeliveryPoint, TerritoryDivider
+from bot_multidelivery.services.map_generator import MapGenerator
+from bot_multidelivery.colors import get_color_for_index
+from bot_multidelivery.services import deliverer_service, geocoding_service, predictor, financial_service
+from bot_multidelivery.models_transfer import TransferRequest, TransferStatus, SeparationSession
 
 router = APIRouter(prefix="/api")
+
+MAPS_DIR = os.path.join("data", "maps")
+os.makedirs(MAPS_DIR, exist_ok=True)
+
+# Armazenamento em memória (na produção usar Redis ou banco)
+active_transfer_requests: Dict[str, TransferRequest] = {}
+active_separation_sessions: Dict[str, SeparationSession] = {}
 
 class DelivererInput(BaseModel):
     name: str
     telegram_id: int
     is_partner: bool = False
+
+class StartSessionInput(BaseModel):
+    date: Optional[str] = None
+    period: str = "manhã"
+    base_address: Optional[str] = None
+    base_lat: Optional[float] = None
+    base_lng: Optional[float] = None
+
+class RouteValueInput(BaseModel):
+    value: float
+    session_id: Optional[str] = None
+
+class OptimizeInput(BaseModel):
+    num_deliverers: int
+    session_id: Optional[str] = None
+
+class AssignRouteInput(BaseModel):
+    route_id: str
+    deliverer_id: int
+    session_id: Optional[str] = None
+
+class FinalizeSessionInput(BaseModel):
+    session_id: Optional[str] = None
+    revenue: Optional[float] = None
+    other_costs: float = 0.0
+    expenses: Optional[List[Dict[str, object]]] = None
+
+class SeparationScanInput(BaseModel):
+    barcode: str
+    session_id: Optional[str] = None
+
+class TransferRequestInput(BaseModel):
+    package_ids: List[str]
+    from_deliverer_id: int
+    to_deliverer_id: int
+    reason: str
+
+class TransferApprovalInput(BaseModel):
+    transfer_id: str
+    approved: bool
+    admin_id: int
+    admin_name: str
+    rejection_reason: Optional[str] = None
+
+def _get_bot() -> Optional[Bot]:
+    if not BotConfig.TELEGRAM_TOKEN:
+        return None
+    return Bot(token=BotConfig.TELEGRAM_TOKEN)
+
+def _safe_map_path(filename: str) -> str:
+    safe_name = os.path.basename(filename)
+    return os.path.join(MAPS_DIR, safe_name)
 
 @router.get("/admin/team")
 async def get_team():
@@ -256,9 +324,10 @@ async def get_my_route(user_id: int):
     # Processa e valida paradas
     if route.optimized_order:
         for idx, point in enumerate(route.optimized_order):
+            pkg_id = getattr(point, "package_id", point.address)
+            is_done = pkg_id in route.delivered_packages
             packages_info = [
-                {"id": p.tracking_code, "status": "pending"} 
-                for p in point.packages
+                {"id": pkg_id, "status": "completed" if is_done else "pending"}
             ]
             
             stops_data.append({
@@ -267,7 +336,7 @@ async def get_my_route(user_id: int):
                 "lng": point.lng,
                 "address": point.address,
                 "packages": packages_info,
-                "status": "pending" # TODO: Integrar status real
+                "status": "completed" if is_done else "pending"
             })
             
     return {
@@ -305,8 +374,374 @@ async def get_stats():
         "routes_count": len(session.routes)
     }
 
+@router.post("/session/start")
+async def start_session(data: StartSessionInput):
+    """Inicia (ou reutiliza) uma sessão ativa"""
+    date_str = data.date or datetime.now().strftime('%Y-%m-%d')
+    session = session_manager.get_current_session()
+
+    if not session or session.is_finalized:
+        session = session_manager.create_new_session(date_str, data.period)
+
+    if data.base_address and data.base_lat is not None and data.base_lng is not None:
+        session_manager.set_base_location(data.base_address, data.base_lat, data.base_lng, session.session_id)
+
+    return {
+        "session_id": session.session_id,
+        "session_name": session.session_name,
+        "date": session.date,
+        "period": session.period,
+        "base_address": session.base_address,
+        "total_packages": session.total_packages,
+        "routes_count": len(session.routes)
+    }
+
+@router.post("/session/route-value")
+async def set_route_value(data: RouteValueInput):
+    """Salva o valor total da rota para uso no fechamento financeiro"""
+    session = session_manager.get_session(data.session_id) if data.session_id else session_manager.get_current_session()
+    if not session:
+        raise HTTPException(status_code=404, detail="Nenhuma sessão ativa")
+
+    setattr(session, "route_value", float(data.value))
+    session_manager._auto_save(session)
+    return {"status": "ok", "route_value": float(data.value)}
+
+def _process_romaneio_import(file: UploadFile, session_id: Optional[str]) -> Dict[str, object]:
+    """Processa importação de romaneio e retorna payload final"""
+    if not file.filename.lower().endswith(('.xlsx', '.xls')):
+        raise HTTPException(status_code=400, detail="Arquivo deve ser Excel (.xlsx)")
+
+    session = session_manager.get_session(session_id) if session_id else session_manager.get_current_session()
+    if not session:
+        session = session_manager.create_new_session(datetime.now().strftime('%Y-%m-%d'), 'manhã')
+
+    with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        tmp_path = tmp.name
+
+    try:
+        deliveries = ShopeeRomaneioParser.parse(tmp_path)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erro ao processar Excel: {str(e)}")
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+    if not deliveries:
+        raise HTTPException(status_code=400, detail="Nenhuma entrega encontrada no arquivo.")
+
+    points: List[DeliveryPoint] = []
+    rom_id = str(uuid.uuid4())[:8]
+
+    for d in deliveries:
+        address = f"{d.address}, {d.bairro}, {d.city}".strip(', ')
+        lat = d.latitude
+        lon = d.longitude
+
+        if lat is None or lon is None:
+            lat, lon = geocoding_service.geocode(address)
+
+        points.append(DeliveryPoint(
+            address=address,
+            lat=lat,
+            lng=lon,
+            romaneio_id=rom_id,
+            package_id=address,
+            priority="normal"
+        ))
+
+    romaneio = Romaneio(
+        id=rom_id,
+        uploaded_at=datetime.now(),
+        points=points
+    )
+
+    session_manager.add_romaneio(romaneio, session.session_id)
+    session = session_manager.get_session(session.session_id)
+
+    all_points: List[DeliveryPoint] = []
+    for rom in session.romaneios:
+        all_points.extend(rom.points)
+
+    map_url = None
+    if all_points:
+        minimap_stops = [(p.lat, p.lng, p.address, 1, 'pending') for p in all_points]
+        base_loc = (session.base_lat, session.base_lng, session.base_address) if session.base_lat and session.base_lng else None
+        html = MapGenerator.generate_interactive_map(
+            stops=minimap_stops,
+            entregador_nome=f"Minimapa Completo - {session.total_packages} pacotes",
+            current_stop=-1,
+            total_packages=session.total_packages,
+            total_distance_km=0,
+            total_time_min=0,
+            base_location=base_loc
+        )
+        filename = f"minimap_session_{session.session_id}.html"
+        MapGenerator.save_map(html, _safe_map_path(filename))
+        map_url = f"/api/maps/{filename}"
+
+    return {
+        "status": "ok",
+        "session_id": session.session_id,
+        "romaneio_id": romaneio.id,
+        "packages": len(points),
+        "total_packages": session.total_packages,
+        "minimap_url": map_url
+    }
+
+@router.post("/session/romaneio/import")
+async def import_romaneio(file: UploadFile = File(...), session_id: Optional[str] = Form(None)):
+    """Importa romaneio Shopee e gera minimapa completo"""
+    return _process_romaneio_import(file, session_id)
+
+@router.post("/romaneio/import")
+async def import_romaneio_alt(file: UploadFile = File(...), session_id: Optional[str] = Form(None)):
+    """Endpoint alternativo de importação (evita conflitos 405)"""
+    return _process_romaneio_import(file, session_id)
+
+@router.post("/routes/optimize")
+async def optimize_routes(data: OptimizeInput):
+    """Divide e otimiza a rota pela quantidade de entregadores"""
+    session = session_manager.get_session(data.session_id) if data.session_id else session_manager.get_current_session()
+    if not session or not session.romaneios:
+        raise HTTPException(status_code=400, detail="Nenhum romaneio importado na sessão.")
+
+    all_points: List[DeliveryPoint] = []
+    for rom in session.romaneios:
+        all_points.extend(rom.points)
+
+    divider = TerritoryDivider(session.base_lat, session.base_lng)
+    clusters = divider.divide_into_clusters(all_points, k=data.num_deliverers)
+
+    routes: List[Route] = []
+    for idx, cluster in enumerate(clusters):
+        optimized = divider.optimize_cluster_route(cluster)
+        color = get_color_for_index(idx)
+        route = Route(
+            id=f"ROTA_{cluster.id + 1}",
+            cluster=cluster,
+            color=color,
+            optimized_order=optimized
+        )
+        routes.append(route)
+
+    session_manager.set_routes(routes, session.session_id)
+
+    preview = []
+    base_loc = (session.base_lat, session.base_lng, session.base_address) if session.base_lat and session.base_lng else None
+    entregadores_lista = [{'name': d.name, 'id': str(d.telegram_id)} for d in deliverer_service.get_all_deliverers()]
+
+    for route in routes:
+        stops_data = [(p.lat, p.lng, p.address, 1, 'pending') for p in route.optimized_order]
+        eta_minutes = max(10, route.total_distance_km / 25 * 60 + len(route.optimized_order) * 3)
+        html = MapGenerator.generate_interactive_map(
+            stops=stops_data,
+            entregador_nome=route.id,
+            current_stop=0,
+            total_packages=route.total_packages,
+            total_distance_km=route.total_distance_km,
+            total_time_min=eta_minutes,
+            base_location=base_loc,
+            entregadores_lista=entregadores_lista,
+            session_id=session.session_id
+        )
+        filename = f"route_{session.session_id}_{route.id}.html"
+        MapGenerator.save_map(html, _safe_map_path(filename))
+        route.map_file = filename
+        preview.append({
+            "route_id": route.id,
+            "color": route.color,
+            "total_packages": route.total_packages,
+            "map_url": f"/api/maps/{filename}"
+        })
+
+    session_manager._auto_save(session)
+
+    return {
+        "status": "ok",
+        "session_id": session.session_id,
+        "routes": preview
+    }
+
+@router.post("/routes/assign")
+async def assign_route(data: AssignRouteInput):
+    """Atribui um entregador a uma rota"""
+    session = session_manager.get_session(data.session_id) if data.session_id else session_manager.get_current_session()
+    if not session:
+        raise HTTPException(status_code=404, detail="Nenhuma sessão ativa")
+
+    target = next((r for r in session.routes if r.id == data.route_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Rota não encontrada")
+
+    deliverer = deliverer_service.get_deliverer(data.deliverer_id)
+    if not deliverer:
+        raise HTTPException(status_code=404, detail="Entregador não encontrado")
+
+    target.assigned_to_telegram_id = deliverer.telegram_id
+    target.assigned_to_name = deliverer.name
+    session_manager.set_routes(session.routes, session.session_id)
+
+    return {"status": "ok", "route_id": target.id, "deliverer": deliverer.name}
+
+@router.post("/routes/send")
+async def send_routes(session_id: Optional[str] = Form(None)):
+    """Envia as rotas atribuídas para cada entregador via Telegram"""
+    session = session_manager.get_session(session_id) if session_id else session_manager.get_current_session()
+    if not session:
+        raise HTTPException(status_code=404, detail="Nenhuma sessão ativa")
+
+    bot = _get_bot()
+    if not bot:
+        raise HTTPException(status_code=500, detail="Token do bot não configurado")
+
+    sent = []
+    base_loc = (session.base_lat, session.base_lng, session.base_address) if session.base_lat and session.base_lng else None
+
+    for route in session.routes:
+        if not route.assigned_to_telegram_id:
+            continue
+
+        if not route.map_file:
+            stops_data = [(p.lat, p.lng, p.address, 1, 'pending') for p in route.optimized_order]
+            eta_minutes = max(10, route.total_distance_km / 25 * 60 + len(route.optimized_order) * 3)
+            html = MapGenerator.generate_interactive_map(
+                stops=stops_data,
+                entregador_nome=route.assigned_to_name or route.id,
+                current_stop=0,
+                total_packages=route.total_packages,
+                total_distance_km=route.total_distance_km,
+                total_time_min=eta_minutes,
+                base_location=base_loc,
+                session_id=session.session_id,
+                entregador_id=str(route.assigned_to_telegram_id)
+            )
+            filename = f"route_{session.session_id}_{route.id}.html"
+            MapGenerator.save_map(html, _safe_map_path(filename))
+            route.map_file = filename
+
+        map_path = _safe_map_path(route.map_file)
+        if os.path.exists(map_path):
+            with open(map_path, 'rb') as f:
+                await bot.send_document(
+                    chat_id=route.assigned_to_telegram_id,
+                    document=f,
+                    filename=route.map_file,
+                    caption=(
+                        f"📍 Rota atribuída: {route.id}\n"
+                        f"Pacotes: {route.total_packages}\n"
+                        f"Cor: {route.color}"
+                    )
+                )
+            sent.append(route.id)
+
+    session_manager._auto_save(session)
+    return {"status": "ok", "sent_routes": sent}
+
+@router.get("/routes/combined-map")
+async def get_combined_map(session_id: Optional[str] = None):
+    """Gera mapa completo com cores por entregador"""
+    session = session_manager.get_session(session_id) if session_id else session_manager.get_current_session()
+    if not session or not session.routes:
+        raise HTTPException(status_code=404, detail="Nenhuma rota disponível")
+
+    base_loc = (session.base_lat, session.base_lng, session.base_address) if session.base_lat and session.base_lng else None
+
+    html = MapGenerator.generate_multi_route_map(
+        routes=session.routes,
+        base_location=base_loc,
+        session_id=session.session_id
+    )
+    filename = f"combined_{session.session_id}.html"
+    MapGenerator.save_map(html, _safe_map_path(filename))
+
+    return {"status": "ok", "map_url": f"/api/maps/{filename}"}
+
+@router.post("/delivery/update")
+async def update_delivery_status(payload: dict):
+    """Atualiza status de entrega a partir do mapa"""
+    entregador_id = payload.get('entregador_id')
+    session_id = payload.get('session_id')
+    package_address = payload.get('address')
+    new_status = payload.get('status')
+
+    if not all([entregador_id, new_status]):
+        raise HTTPException(status_code=400, detail="Dados incompletos")
+
+    try:
+        entregador_id = int(entregador_id)
+    except (ValueError, TypeError):
+        pass
+
+    delivery_success = (new_status == 'completed')
+    if deliverer_service:
+        deliverer_service.update_stats_after_delivery(
+            telegram_id=entregador_id,
+            delivery_success=delivery_success,
+            delivery_time_minutes=5
+        )
+
+    if new_status == 'completed' and package_address:
+        session_manager.mark_package_delivered(entregador_id, package_address, session_id)
+
+    session = session_manager.get_session(session_id) if session_id else session_manager.get_current_session()
+    if session and session.total_pending == 0:
+        if not getattr(session, "all_delivered_notified", False):
+            bot = _get_bot()
+            if bot:
+                await bot.send_message(
+                    chat_id=BotConfig.ADMIN_TELEGRAM_ID,
+                    text=f"✅ Todas as entregas finalizadas na sessão {session.session_name} ({session.session_id})."
+                )
+            setattr(session, "all_delivered_notified", True)
+            session_manager._auto_save(session)
+
+    return {"success": True}
+
+@router.post("/session/finalize")
+async def finalize_session(data: FinalizeSessionInput):
+    """Fecha sessão e salva financeiro"""
+    session = session_manager.get_session(data.session_id) if data.session_id else session_manager.get_current_session()
+    if not session:
+        raise HTTPException(status_code=404, detail="Nenhuma sessão ativa")
+
+    route_value = getattr(session, "route_value", None)
+    revenue = data.revenue if data.revenue is not None else (route_value or 0.0)
+
+    deliverer_costs: Dict[str, float] = {}
+    for route in session.routes:
+        if not route.assigned_to_name or not route.assigned_to_telegram_id:
+            continue
+        d = deliverer_service.get_deliverer(route.assigned_to_telegram_id)
+        cost_per_pkg = d.cost_per_package if d else 1.0
+        qty = route.delivered_count if route.delivered_count > 0 else route.total_packages
+        deliverer_costs[route.assigned_to_name] = deliverer_costs.get(route.assigned_to_name, 0) + (qty * cost_per_pkg)
+
+    report = financial_service.close_day(
+        date=datetime.strptime(session.date, '%Y-%m-%d') if session.date else datetime.now(),
+        revenue=revenue,
+        deliverer_costs=deliverer_costs,
+        other_costs=data.other_costs,
+        total_packages=session.total_packages,
+        total_deliveries=session.total_delivered,
+        expenses=data.expenses or []
+    )
+
+    session_manager.finalize_session(session.session_id)
+
+    return {"status": "ok", "report": report.to_dict()}
+
+@router.get("/maps/{filename}")
+async def get_map_file(filename: str):
+    """Serve mapas HTML gerados"""
+    path = _safe_map_path(filename)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Mapa não encontrado")
+    return FileResponse(path, media_type='text/html')
+
 @router.post("/route/analyze")
-async def analyze_route_file(file: UploadFile = File(...)):
+async def analyze_route_file(file: UploadFile = File(...), route_value: float = Form(0.0)):
     """
     Analisa arquivo de romaneio (XLSX Shopee) e retorna estatísticas de IA.
     Endpoint portado do Bot Telegram para a Web.
@@ -349,14 +784,456 @@ async def analyze_route_file(file: UploadFile = File(...)):
             
         # Executa Análise
         analyzer = RouteAnalyzer()
-        result = analyzer.analyze_route(analyzer_input)
+        result = analyzer.analyze_route(analyzer_input, route_value=route_value)
+
+        # Gera minimapa da análise (todos endereços)
+        map_url = None
+        base_loc = None
+        session = session_manager.get_current_session()
+        if session and session.base_lat and session.base_lng:
+            base_loc = (session.base_lat, session.base_lng, session.base_address)
+
+        if analyzer_input:
+            stops = [(d['lat'], d['lon'], d['address'], 1, 'pending') for d in analyzer_input if d.get('lat') and d.get('lon')]
+            if stops:
+                html = MapGenerator.generate_interactive_map(
+                    stops=stops,
+                    entregador_nome=f"Minimapa Análise - {len(stops)} pacotes",
+                    current_stop=-1,
+                    total_packages=len(stops),
+                    total_distance_km=0,
+                    total_time_min=0,
+                    base_location=base_loc
+                )
+                filename = f"minimap_analysis_{uuid.uuid4().hex[:8]}.html"
+                MapGenerator.save_map(html, _safe_map_path(filename))
+                map_url = f"/api/maps/{filename}"
         
-        # Retorna Dataclass como Dict
+        # Formata resultado para output rico
         from dataclasses import asdict
-        return asdict(result)
+        analysis_dict = asdict(result)
+        
+        # Enriquece com formatações para o frontend
+        analysis_dict['formatted'] = {
+            'header': {
+                'value': f"💰 R$ {result.route_value:.2f}" if result.route_value > 0 else "Sem valor informado",
+                'type': result.route_type,
+                'score': result.overall_score,
+                'recommendation': result.recommendation
+            },
+            'earnings': {
+                'hourly': f"R$ {result.hourly_earnings:.2f}/hora" if result.hourly_earnings > 0 else "N/A",
+                'package': f"R$ {result.package_earnings:.2f}/pacote" if result.package_earnings > 0 else "N/A",
+                'time_estimate': f"{result.estimated_time_minutes:.0f} min ({result.estimated_time_minutes/60:.1f}h)"
+            },
+            'top_drops': [
+                {'street': street, 'count': count, 'emoji': '🔥' if i == 0 else '✨' if i == 1 else '⭐'}
+                for i, (street, count) in enumerate(result.top_drops or [])
+            ],
+            'profile': {
+                'commercial': result.commercial_count,
+                'vertical': result.vertical_count,
+                'residential': result.total_packages - result.commercial_count - result.vertical_count,
+                'type_label': result.route_type
+            },
+            'concentration': {
+                'density': f"{result.density_score:.1f} pacotes/km²",
+                'area': f"{result.area_coverage_km2:.2f} km²",
+                'neighborhoods': result.unique_neighborhoods,
+                'score': f"{result.concentration_score:.1f}/10"
+            }
+        }
+        
+        if map_url:
+            analysis_dict['minimap_url'] = map_url
+
+        return analysis_dict
 
     except HTTPException as he:
         raise he
     except Exception as e:
         print(f"Erro crítico na análise de rota: {e}")
         raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
+
+
+# ============================================
+# 🔄 MODO SEPARAÇÃO - Bipagem de Pacotes
+# ============================================
+
+@router.post("/separation/start")
+async def start_separation():
+    """Inicia modo separação após otimização de rotas"""
+    try:
+        session = session_manager.get_current_session()
+        if not session:
+            raise HTTPException(status_code=400, detail="Nenhuma sessão ativa")
+        
+        if not session.routes:
+            raise HTTPException(status_code=400, detail="Nenhuma rota para separar")
+        
+        # Conta total de pacotes
+        total_packages = sum(len(r.packages) for r in session.routes.values())
+        
+        # Cria sessão de separação
+        sep_session = SeparationSession(
+            session_id=session.session_id,
+            route_ids=list(session.routes.keys()),
+            total_packages=total_packages
+        )
+        
+        active_separation_sessions[session.session_id] = sep_session
+        
+        return {
+            "status": "started",
+            "session": sep_session.to_dict()
+        }
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"Erro ao iniciar separação: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/separation/scan")
+async def scan_package(data: SeparationScanInput):
+    """Bipa pacote e retorna informações de rota/entregador/sequência"""
+    try:
+        session = session_manager.get_current_session()
+        if not session:
+            raise HTTPException(status_code=400, detail="Nenhuma sessão ativa")
+        
+        session_id = data.session_id or session.session_id
+        sep_session = active_separation_sessions.get(session_id)
+        if not sep_session:
+            raise HTTPException(status_code=400, detail="Sessão de separação não iniciada")
+        
+        # Busca pacote pelo barcode em todas as rotas
+        found_package = None
+        found_route = None
+        package_index = None
+        
+        for route_id in sep_session.route_ids:
+            route = session.routes.get(route_id)
+            if not route:
+                continue
+            
+            for idx, pkg in enumerate(route.packages):
+                # Compara barcode ou ID do pacote
+                if pkg.barcode == data.barcode or pkg.id == data.barcode:
+                    found_package = pkg
+                    found_route = route
+                    package_index = idx + 1  # Sequência começa em 1
+                    break
+            
+            if found_package:
+                break
+        
+        if not found_package or not found_route:
+            raise HTTPException(status_code=404, detail="Pacote não encontrado no romaneio")
+        
+        # Já foi bipado?
+        if found_package.scanned_at:
+            return {
+                "status": "already_scanned",
+                "message": "Pacote já foi bipado anteriormente",
+                "scanned_at": found_package.scanned_at.isoformat(),
+                "route_color": found_route.color,
+                "deliverer_name": found_route.assigned_deliverer.name if found_route.assigned_deliverer else "Não atribuído",
+                "sequence": package_index
+            }
+        
+        # Marca como bipado
+        found_package.scanned_at = datetime.now()
+        found_package.sequence_in_route = package_index
+        
+        # Atualiza contador
+        sep_session.scanned_packages += 1
+        
+        # Verifica se completou
+        if sep_session.scanned_packages >= sep_session.total_packages:
+            sep_session.is_complete = True
+            sep_session.completed_at = datetime.now()
+        
+        return {
+            "status": "success",
+            "route_color": found_route.color,
+            "deliverer_name": found_route.assigned_deliverer.name if found_route.assigned_deliverer else "Não atribuído",
+            "deliverer_id": found_route.assigned_deliverer.telegram_id if found_route.assigned_deliverer else None,
+            "sequence": package_index,
+            "total_in_route": len(found_route.packages),
+            "progress": {
+                "scanned": sep_session.scanned_packages,
+                "total": sep_session.total_packages,
+                "percentage": sep_session.progress_percentage
+            },
+            "address": found_package.address
+        }
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"Erro ao bipar pacote: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/separation/status")
+async def get_separation_status(session_id: Optional[str] = None):
+    """Retorna status da separação"""
+    try:
+        session = session_manager.get_current_session()
+        if not session:
+            raise HTTPException(status_code=400, detail="Nenhuma sessão ativa")
+        
+        sid = session_id or session.session_id
+        sep_session = active_separation_sessions.get(sid)
+        
+        if not sep_session:
+            return {
+                "active": False,
+                "message": "Separação não iniciada"
+            }
+        
+        return {
+            "active": True,
+            "session": sep_session.to_dict()
+        }
+    except Exception as e:
+        print(f"Erro ao buscar status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/separation/complete")
+async def complete_separation():
+    """Finaliza separação e libera envio de rotas"""
+    try:
+        session = session_manager.get_current_session()
+        if not session:
+            raise HTTPException(status_code=400, detail="Nenhuma sessão ativa")
+        
+        sep_session = active_separation_sessions.get(session.session_id)
+        if not sep_session:
+            raise HTTPException(status_code=400, detail="Separação não iniciada")
+        
+        if not sep_session.is_complete:
+            return {
+                "status": "incomplete",
+                "message": f"Ainda faltam {sep_session.total_packages - sep_session.scanned_packages} pacotes para bipar"
+            }
+        
+        # Marca sessão como pronta para envio
+        session.separation_completed = True
+        
+        return {
+            "status": "completed",
+            "message": "Separação concluída! Agora pode enviar as rotas aos entregadores.",
+            "session": sep_session.to_dict()
+        }
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"Erro ao finalizar separação: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================
+# 🔄 TRANSFERÊNCIAS - Gerenciamento de Pacotes
+# ============================================
+
+@router.post("/delivery/transfer-request")
+async def request_transfer(data: TransferRequestInput):
+    """Entregador solicita transferência de pacote(s)"""
+    try:
+        session = session_manager.get_current_session()
+        if not session:
+            raise HTTPException(status_code=400, detail="Nenhuma sessão ativa")
+        
+        # Busca nomes dos entregadores
+        deliverers = data_store.load_deliverers()
+        from_del = next((d for d in deliverers if d.telegram_id == data.from_deliverer_id), None)
+        to_del = next((d for d in deliverers if d.telegram_id == data.to_deliverer_id), None)
+        
+        if not from_del or not to_del:
+            raise HTTPException(status_code=404, detail="Entregador não encontrado")
+        
+        # Cria solicitação
+        transfer_id = str(uuid.uuid4())
+        transfer = TransferRequest(
+            id=transfer_id,
+            package_ids=data.package_ids,
+            from_deliverer_id=data.from_deliverer_id,
+            from_deliverer_name=from_del.name,
+            to_deliverer_id=data.to_deliverer_id,
+            to_deliverer_name=to_del.name,
+            reason=data.reason
+        )
+        
+        active_transfer_requests[transfer_id] = transfer
+        
+        # Marca pacotes como em transferência
+        for route in session.routes.values():
+            for pkg in route.packages:
+                if pkg.id in data.package_ids:
+                    pkg.status = "solicitacao_transferencia"
+        
+        return {
+            "status": "requested",
+            "transfer": transfer.to_dict(),
+            "message": "Solicitação enviada ao administrador"
+        }
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"Erro ao solicitar transferência: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/delivery/pending-transfers")
+async def get_pending_transfers():
+    """Lista transferências pendentes (para admin)"""
+    try:
+        pending = [
+            t.to_dict()
+            for t in active_transfer_requests.values()
+            if t.status == TransferStatus.PENDING
+        ]
+        
+        return {
+            "pending_count": len(pending),
+            "transfers": pending
+        }
+    except Exception as e:
+        print(f"Erro ao listar transferências: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/delivery/transfer-approve")
+async def approve_transfer(data: TransferApprovalInput):
+    """Admin aprova ou rejeita transferência"""
+    try:
+        transfer = active_transfer_requests.get(data.transfer_id)
+        if not transfer:
+            raise HTTPException(status_code=404, detail="Transferência não encontrada")
+        
+        if transfer.status != TransferStatus.PENDING:
+            raise HTTPException(status_code=400, detail="Transferência já foi processada")
+        
+        session = session_manager.get_current_session()
+        if not session:
+            raise HTTPException(status_code=400, detail="Nenhuma sessão ativa")
+        
+        if data.approved:
+            # Aprova transferência
+            transfer.status = TransferStatus.APPROVED
+            transfer.approved_at = datetime.now()
+            transfer.approved_by_admin_id = data.admin_id
+            transfer.approved_by_admin_name = data.admin_name
+            
+            # Move pacotes entre rotas
+            from_route = None
+            to_route = None
+            
+            for route in session.routes.values():
+                if route.assigned_deliverer and route.assigned_deliverer.telegram_id == transfer.from_deliverer_id:
+                    from_route = route
+                if route.assigned_deliverer and route.assigned_deliverer.telegram_id == transfer.to_deliverer_id:
+                    to_route = route
+            
+            if from_route and to_route:
+                # Remove pacotes da rota origem
+                packages_to_transfer = [p for p in from_route.packages if p.id in transfer.package_ids]
+                from_route.packages = [p for p in from_route.packages if p.id not in transfer.package_ids]
+                
+                # Adiciona na rota destino
+                for pkg in packages_to_transfer:
+                    pkg.assigned_to = transfer.to_deliverer_name
+                    pkg.status = "em_transito"
+                    to_route.packages.append(pkg)
+                
+                message = f"Transferência aprovada! {len(packages_to_transfer)} pacote(s) movido(s)."
+            else:
+                message = "Transferência aprovada (rotas não encontradas para mover fisicamente)"
+        else:
+            # Rejeita
+            transfer.status = TransferStatus.REJECTED
+            transfer.rejection_reason = data.rejection_reason
+            
+            # Volta status dos pacotes
+            for route in session.routes.values():
+                for pkg in route.packages:
+                    if pkg.id in transfer.package_ids:
+                        pkg.status = "em_transito"
+            
+            message = "Transferência rejeitada"
+        
+        return {
+            "status": "success",
+            "transfer": transfer.to_dict(),
+            "message": message
+        }
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"Erro ao processar transferência: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/session/romaneio/import-additional")
+async def import_additional_romaneio(file: UploadFile = File(...)):
+    """Importa romaneio adicional para a sessão ativa"""
+    try:
+        session = session_manager.get_current_session()
+        if not session:
+            raise HTTPException(status_code=400, detail="Nenhuma sessão ativa. Crie uma sessão primeiro.")
+        
+        # Salva arquivo temporário
+        temp_path = tempfile.mktemp(suffix=".xlsx")
+        with open(temp_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+        
+        try:
+            # Parse novo romaneio
+            parser = ShopeeRomaneioParser()
+            deliveries = parser.parse(temp_path)
+            
+            if not deliveries:
+                raise HTTPException(status_code=400, detail="Nenhuma entrega válida encontrada no arquivo")
+            
+            # Adiciona à sessão existente
+            new_romaneio = Romaneio(
+                id=str(uuid.uuid4()),
+                filename=file.filename,
+                deliveries=deliveries,
+                created_at=datetime.now()
+            )
+            
+            session.romaneios.append(new_romaneio)
+            
+            # Gera minimap do novo romaneio
+            points = [DeliveryPoint(d.latitude, d.longitude, d.address) for d in deliveries]
+            
+            map_gen = MapGenerator()
+            minimap_filename = f"minimap_additional_{new_romaneio.id}.html"
+            minimap_path = _safe_map_path(minimap_filename)
+            
+            map_gen.generate_minimap(
+                points,
+                minimap_path,
+                title=f"Romaneio Adicional - {file.filename}"
+            )
+            
+            return {
+                "status": "success",
+                "message": f"Romaneio adicional importado! {len(deliveries)} entregas.",
+                "romaneio_id": new_romaneio.id,
+                "total_romaneios": len(session.romaneios),
+                "total_deliveries": sum(len(r.deliveries) for r in session.romaneios),
+                "minimap_url": f"/api/maps/{minimap_filename}"
+            }
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"Erro ao importar romaneio adicional: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

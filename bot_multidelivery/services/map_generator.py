@@ -1086,6 +1086,98 @@ class MapGenerator:
         )
         
         return html
+
+        @staticmethod
+        def generate_multi_route_map(
+                routes,
+                base_location: Tuple[float, float, str] = None,
+                session_id: str = None
+        ) -> str:
+                """Gera mapa completo com cores por rota/entregador"""
+                markers = []
+                for route in routes:
+                        color = getattr(route, 'color', '#667eea')
+                        label = route.assigned_to_name or route.id
+                        for idx, point in enumerate(route.optimized_order):
+                                markers.append({
+                                        'lat': point.lat,
+                                        'lng': point.lng,
+                                        'address': point.address,
+                                        'color': color,
+                                        'label': label,
+                                        'seq': idx + 1
+                                })
+
+                lats = [m['lat'] for m in markers]
+                lons = [m['lng'] for m in markers]
+                if base_location:
+                        lats.append(base_location[0])
+                        lons.append(base_location[1])
+
+                if lats and lons:
+                        center_lat = sum(lats) / len(lats)
+                        center_lon = sum(lons) / len(lons)
+                        lat_range = max(lats) - min(lats)
+                        lon_range = max(lons) - min(lons)
+                        max_range = max(lat_range, lon_range)
+                        if max_range < 0.01:
+                                zoom = 16
+                        elif max_range < 0.03:
+                                zoom = 15
+                        elif max_range < 0.05:
+                                zoom = 14
+                        elif max_range < 0.1:
+                                zoom = 13
+                        else:
+                                zoom = 12
+                else:
+                        center_lat = 0
+                        center_lon = 0
+                        zoom = 14
+
+                markers_json = json.dumps(markers, ensure_ascii=False)
+                base_json = json.dumps({
+                        'lat': base_location[0],
+                        'lng': base_location[1],
+                        'address': base_location[2]
+                }, ensure_ascii=False) if base_location else 'null'
+
+                return f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8' />
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <title>Mapa Completo - Sessão {session_id or ''}</title>
+    <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
+    <style>html, body, #map {{ height: 100%; margin: 0; }}</style>
+</head>
+<body>
+    <div id='map'></div>
+    <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+    <script>
+        const map = L.map('map').setView([{center_lat}, {center_lon}], {zoom});
+        L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{ maxZoom: 19 }}).addTo(map);
+
+        const markers = {markers_json};
+        markers.forEach(m => {{
+            const marker = L.circleMarker([m.lat, m.lng], {{
+                radius: 7,
+                color: m.color,
+                fillColor: m.color,
+                fillOpacity: 0.85
+            }}).addTo(map);
+            marker.bindPopup(`<b>${{m.label}}</b><br/>${{m.address}}`);
+        }});
+
+        const base = {base_json};
+        if (base) {{
+            L.marker([base.lat, base.lng]).addTo(map).bindPopup(`Base: ${{base.address}}`);
+        }}
+    </script>
+</body>
+</html>
+"""
     
     @staticmethod
     def save_map(html: str, filename: str):

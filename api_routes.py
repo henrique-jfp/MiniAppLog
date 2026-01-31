@@ -2039,6 +2039,46 @@ async def update_session_step(session_id: Optional[str] = None, step: str = "idl
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/session/state")
+async def get_session_state():
+    """
+    🔄 Retorna o estado completo da sessão atual para reconstrução da UI
+    Permite que o usuário retome exatamente de onde parou (troca de dispositivo)
+    """
+    session = session_manager.get_current_session()
+    
+    if not session or session.is_finalized:
+        return {"active": False}
+        
+    # Constrói Assignments map
+    assignments = {}
+    routes_list = []
+    
+    for r in session.routes:
+        if r.assigned_to_telegram_id:
+             assignments[r.id] = r.assigned_to_telegram_id
+             
+        routes_list.append({
+             "route_id": r.id,
+             "total_stops": len(r.optimized_order),
+             "total_packages": r.total_packages,
+             # Se tiver cluster info, pode adicionar percentage_load aqui
+             "map_url": f"/maps/{os.path.basename(r.map_file)}" if r.map_file else None,
+             "deliverer_id": r.assigned_to_telegram_id
+        })
+
+    return {
+        "active": True,
+        "session_id": session.session_id,
+        "current_step": session.current_step, # idle, imported, assigned, etc
+        "has_romaneio": len(session.romaneios) > 0,
+        "route_value": session.route_value,
+        "num_deliverers": session.num_deliverers if session.num_deliverers > 0 else 2,
+        "routes": routes_list,
+        "assignments": assignments
+    }
+
+
 @router.post("/session/cancel-import")
 async def cancel_romaneio_import(session_id: Optional[str] = None):
     """

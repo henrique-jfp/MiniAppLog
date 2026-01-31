@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FileUp, Sparkles, MapPin, AlertCircle, Users, Send, Map, TrendingUp, Navigation } from 'lucide-react';
 import { useResponsive } from './hooks/useResponsive';
+import BarcodeScanner from './components/BarcodeScanner';
 
 export default function RouteAnalysisView() {
   const responsive = useResponsive();
@@ -33,10 +34,40 @@ export default function RouteAnalysisView() {
   const [showScanner, setShowScanner] = useState(false);
 
   useEffect(() => {
+    // 1. Carregar Entregadores
     fetch('/api/admin/team')
       .then(r => r.json())
       .then(setDeliverers)
       .catch(() => setDeliverers([]));
+
+    // 2. Restaurar Estado da Sessão (Cross-Device)
+    fetch('/api/session/state')
+      .then(r => r.json())
+      .then(data => {
+        if (data.active) {
+          console.log("Restaurando sessão:", data);
+          if (data.has_romaneio) {
+            setViewMode('import');
+            setHasRomaneio(true);
+            setSessionId(data.session_id);
+            if (data.route_value) setImportRouteValue(data.route_value);
+            if (data.num_deliverers) setNumDeliverers(data.num_deliverers);
+            
+            // Restaura rotas se houver
+            if (data.routes && data.routes.length > 0) {
+              setRoutes(data.routes);
+              setAssignments(data.assignments || {});
+            }
+            
+            // Recarrega relatório visual
+            fetch('/api/session/report')
+               .then(r => r.json())
+               .then(setImportAnalysis)
+               .catch(e => console.error("Erro recarregar report", e));
+          }
+        }
+      })
+      .catch(e => console.error("Erro ao checar estado", e));
   }, []);
 
   // ====== ABA 1: ANÁLISE SIMPLES POR ENDEREÇOS ======
@@ -254,6 +285,28 @@ export default function RouteAnalysisView() {
       setAssignments(prev => ({ ...prev, [routeId]: delivererId }));
     } catch (err) {
       setError(err.message);
+    }
+  };
+
+  const handleCancelSession = async () => {
+    if (!confirm('🛑 Tem certeza? Isso apagará todos os romaneios e rotas atuais.')) return;
+    
+    setLoading(true);
+    try {
+      await fetch('/api/session/cancel-import', { method: 'POST' });
+      // Reset local state
+      setHasRomaneio(false);
+      setSessionId(null);
+      setImportAnalysis(null);
+      setRoutes([]);
+      setAssignments({});
+      setImportRouteValue('');
+      setFile(null);
+      setViewMode('simple'); // Volta por padrão
+    } catch (err) {
+      setError('Erro ao cancelar: ' + err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -619,22 +672,32 @@ Rua General Polidoro, 322, 301
               )}
             </button>
           ) : (
-            <div className={`grid gap-3 ${responsive.isDesktop ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            <div className="space-y-3">
+              <div className={`grid gap-3 ${responsive.isDesktop ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                <button
+                  onClick={handleImportAdditional}
+                  disabled={loading || !file}
+                  className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  <FileUp size={20} />
+                  {loading ? '...' : '+ Add Outro Romaneio'}
+                </button>
+                <button
+                  onClick={handleSessionReport}
+                  disabled={loading}
+                  className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  <Sparkles size={20} />
+                  {loading ? '...' : 'Gerar Relatório Completo'}
+                </button>
+              </div>
+              
               <button
-                onClick={handleImportAdditional}
-                disabled={loading || !file}
-                className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
-              >
-                <FileUp size={20} />
-                {loading ? '...' : '+ Add Outro Romaneio'}
-              </button>
-              <button
-                onClick={handleSessionReport}
+                onClick={handleCancelSession}
                 disabled={loading}
-                className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+                className="w-full bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 font-bold py-3 rounded-lg transition-colors border border-red-200 dark:border-red-800/50 text-sm"
               >
-                <Sparkles size={20} />
-                {loading ? '...' : 'Gerar Relatório Completo'}
+                🔴 Cancelar Sessão (Limpar tudo)
               </button>
             </div>
           )}

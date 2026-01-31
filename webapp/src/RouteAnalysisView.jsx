@@ -457,6 +457,22 @@ Rua General Polidoro, 322, 301
                   {simpleAnalysis.ai_comment}
                 </p>
               </div>
+
+              {/* MAPA */}
+              {simpleAnalysis.map_url && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700">
+                  <div className="bg-gradient-to-r from-purple-500 to-pink-500 p-3 text-white font-bold flex items-center gap-2">
+                    <Map size={20} />
+                    🗺️ Minimapa da Rota
+                  </div>
+                  <iframe
+                    src={simpleAnalysis.map_url}
+                    className="w-full h-96 border-0"
+                    title="Mapa da Rota"
+                    allowFullScreen=""
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>

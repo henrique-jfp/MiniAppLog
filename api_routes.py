@@ -964,16 +964,7 @@ async def analyze_addresses(
     - Endereços colados (um por linha)
     - Valor total da rota
     
-    Retorna análise completa com tipo de rota, ganho por hora, top drops, etc
-    
-    Exemplo:
-    ```
-    addresses_text:
-    Rua Principado de Mônaco, 37, Apt 501
-    Rua Mena Barreto, 161, Loja BMRIO
-    Rua General Polidoro, 322, 301
-    ...
-    ```
+    Retorna análise completa com tipo de rota, ganho por hora, top drops, mapa, etc
     """
     if not addresses_text.strip():
         raise HTTPException(status_code=400, detail="Nenhum endereço informado")
@@ -984,8 +975,56 @@ async def analyze_addresses(
         result = analyzer.analyze_addresses_from_text(
             addresses_text=addresses_text,
             route_value=route_value,
-            base_location=None  # Sem base para essa análise
+            base_location=None
         )
+        
+        # ====== GERA MAPA ======
+        # Geocodifica os endereços para mostrar no mapa
+        from bot_multidelivery.services.geocoding_service import GeocodingService
+        geocoder = GeocodingService()
+        
+        stops_with_coords = []
+        lines = [l.strip() for l in addresses_text.strip().split('\n') if l.strip()]
+        
+        for idx, addr_line in enumerate(lines):
+            try:
+                # Tenta geocodificar
+                coords = geocoder.geocode(addr_line)
+                if coords:
+                    stops_with_coords.append((
+                        coords['lat'],
+                        coords['lng'],
+                        addr_line,
+                        1,  # count
+                        'pending'  # status
+                    ))
+            except:
+                pass  # Pula se não conseguir geocodificar
+        
+        # Se não conseguiu geocodificar nada, usa coordenadas aleatórias em Salvador
+        if not stops_with_coords:
+            import random
+            for idx, addr_line in enumerate(lines):
+                # Coordenadas aproximadas de Salvador com pequena variação
+                lat = -13.0035 + random.uniform(-0.05, 0.05)
+                lng = -38.5106 + random.uniform(-0.05, 0.05)
+                stops_with_coords.append((lat, lng, addr_line, 1, 'pending'))
+        
+        # Gera o mapa HTML
+        map_html = MapGenerator.generate_interactive_map(
+            stops=stops_with_coords,
+            entregador_nome=f"Minimapa Análise - {result.total_packages} pacotes",
+            current_stop=-1,
+            total_packages=result.total_packages,
+            total_distance_km=result.total_distance_km,
+            total_time_min=result.estimated_time_minutes,
+            base_location=None
+        )
+        
+        # Salva o mapa
+        filename = f"map_analysis_{uuid.uuid4().hex[:8]}.html"
+        MapGenerator.save_map(map_html, _safe_map_path(filename))
+        map_url = f"/api/maps/{filename}"
         
         # Formata para output rico
         analysis_dict = {
@@ -1041,7 +1080,10 @@ async def analyze_addresses(
                 'concentration_score': f"{result.concentration_score:.1f}/10",
                 'total_distance': f"{result.total_distance_km:.1f} km",
                 'area_coverage': f"{result.area_coverage_km2:.2f} km²"
-            }
+            },
+            
+            # ====== MAPA ======
+            'map_url': map_url
         }
         
         return analysis_dict

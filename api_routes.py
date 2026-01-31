@@ -45,6 +45,86 @@ async def get_me(user_id: int):
     return {"id": user_id, "role": "guest", "name": "Visitante"}
 
 
+def get_current_week_financials():
+    """Lê os JSONs da semana atual para calcular totais"""
+    from datetime import datetime, timedelta
+    import glob
+    
+    # Define início da semana (Segunda-feira)
+    today = datetime.now()
+    start_week = today - timedelta(days=today.weekday())
+    week_dates = [(start_week + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(7)]
+    
+    total_revenue = 0.0
+    total_costs = 0.0
+    total_profit = 0.0
+    deliverer_earnings = {}
+    
+    base_path = "data/financial/daily"
+    
+    for date_str in week_dates:
+        file_path = f"{base_path}/{date_str}.json"
+        if os.path.exists(file_path):
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    total_revenue += data.get('revenue', 0)
+                    total_costs += data.get('delivery_costs', 0) + data.get('other_costs', 0)
+                    total_profit += data.get('net_profit', 0)
+                    
+                    # Soma ganhos individuais
+                    breakdown = data.get('deliverer_breakdown', {})
+                    for name, value in breakdown.items():
+                        deliverer_earnings[name] = deliverer_earnings.get(name, 0) + value
+            except Exception:
+                continue
+                
+    return {
+        "dates": week_dates,
+        "company": {
+            "revenue": total_revenue,
+            "costs": total_costs,
+            "profit": total_profit
+        },
+        "deliverers": deliverer_earnings
+    }
+
+@router.get("/financial/balance")
+async def get_financial_balance(user_id: int):
+    """
+    Retorna dados financeiros baseados no papel, calculados
+    somando os JSONs da semana atual.
+    """
+    # 1. Identifica usuário
+    user_info = await get_me(user_id)
+    role = user_info.get('role')
+    is_partner = user_info.get('is_partner', False)
+    name = user_info.get('name')
+    
+    # 2. Calcula dados da semana
+    week_data = get_current_week_financials()
+    
+    # 3. Resposta para Entregador Comum -> Só vê seus ganhos
+    if role == 'deliverer' and not is_partner:
+        my_balance = week_data['deliverers'].get(name, 0.0)
+        return {
+            "view": "personal",
+            "period": "Semana Atual",
+            "balance": my_balance,
+            "currency": "BRL"
+        }
+        
+    # 4. Resposta para Sócio ou Admin -> Vê tudo
+    if role == 'admin' or (role == 'deliverer' and is_partner):
+        return {
+            "view": "company",
+            "period": "Semana Atual",
+            "company_stats": week_data['company'],
+            "deliverers_stats": week_data['deliverers']
+        }
+        
+    raise HTTPException(status_code=403, detail="Acesso negado")
+
 @router.get("/deliverer/route")
 async def get_my_route(user_id: int):
     """Retorna rota ativa do entregador"""

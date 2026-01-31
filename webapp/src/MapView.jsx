@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, SVGOverlay } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { MapPin, Package, Navigation } from 'lucide-react';
+import { MapPin, Package, Navigation, Check } from 'lucide-react';
 
 // Fix icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -170,33 +170,33 @@ function BottomSheetStopInfo({ stop, index, total, onClose }) {
       }}
     >
       {/* Overlay */}
-      <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-md" onClick={onClose} />
 
       {/* Bottom Sheet */}
-      <div className={`relative bg-white dark:bg-gray-800 rounded-t-3xl shadow-2xl transition-all duration-300 ${isExpanded ? 'h-2/3' : 'h-fit max-h-96'}`}>
+      <div className={`relative bg-white dark:bg-gray-800 rounded-t-3xl shadow-2xl transition-all duration-300 ${isExpanded ? 'h-2/3' : 'h-fit max-h-96'} border-t-2 border-primary-600`}>
         
-        {/* Handle Bar */}
-        <div className="flex justify-center pt-3 pb-4">
-          <div className="w-12 h-1 bg-gray-300 dark:bg-gray-600 rounded-full" />
+        {/* Handle Bar - Melhorado */}
+        <div className="flex justify-center pt-4 pb-3 bg-gradient-to-b from-transparent to-gray-50 dark:to-gray-800/50">
+          <div className="w-14 h-1.5 bg-gradient-to-r from-gray-300 via-gray-400 to-gray-300 dark:from-gray-600 dark:via-gray-500 dark:to-gray-600 rounded-full shadow-md" />
         </div>
 
         {/* Header */}
         <div className="px-5 pb-4 border-b border-gray-100 dark:border-gray-700">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center text-primary-600 dark:text-primary-400 font-bold text-sm">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-600 to-primary-700 flex items-center justify-center text-white font-black text-lg shadow-lg shadow-primary-500/30">
                 {index + 1}
               </div>
               <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Parada {index + 1} de {total}</p>
-                <h3 className="font-black text-gray-900 dark:text-white">{stop.id}</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wide">Parada {index + 1} de {total}</p>
+                <h3 className="font-black text-lg text-gray-900 dark:text-white">{stop.id}</h3>
               </div>
             </div>
             <button 
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+              className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center transition-all active:scale-90"
             >
-              ✕
+              <span className="text-lg text-gray-600 dark:text-gray-300">✕</span>
             </button>
           </div>
         </div>
@@ -205,44 +205,58 @@ function BottomSheetStopInfo({ stop, index, total, onClose }) {
         <div className={`overflow-y-auto px-5 py-4 ${isExpanded ? 'max-h-[calc(2/3vh-120px)]' : 'max-h-64'}`}>
           
           {/* Address Section */}
-          <div className="mb-4">
-            <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold mb-2">ENDEREÇO</p>
-            <p className="font-bold text-lg text-gray-900 dark:text-white mb-1">{stop.address}</p>
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-              <MapPin className="w-4 h-4 text-accent-500" />
-              <span>Clique para copiar coordenadas</span>
+          <div className="mb-5 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/10 rounded-2xl border border-blue-200 dark:border-blue-800/30">
+            <div className="flex items-start gap-3">
+              <MapPin className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs text-blue-600 dark:text-blue-400 font-bold uppercase tracking-wide mb-1">Endereço</p>
+                <p className="font-bold text-base text-gray-900 dark:text-white">{stop.address}</p>
+              </div>
             </div>
           </div>
 
           {/* Packages Section */}
-          <div className="mb-4 p-3 bg-primary-50 dark:bg-primary-900/20 rounded-xl border border-primary-200 dark:border-primary-800">
+          <div className="mb-4 p-4 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/10 rounded-2xl border border-green-200 dark:border-green-800/30">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold text-primary-700 dark:text-primary-400">PACOTES</p>
-              <span className="badge badge-info text-xs">{stop.packages.length}</span>
+              <div className="flex items-center gap-2">
+                <Package className="w-5 h-5 text-green-600 dark:text-green-400" />
+                <p className="text-xs font-bold text-green-700 dark:text-green-400 uppercase tracking-wide">Pacotes</p>
+              </div>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-600 text-white text-xs font-bold shadow-lg shadow-green-500/30">
+                <Package className="w-3.5 h-3.5" />
+                {stop.packages.length}
+              </span>
             </div>
             {stop.packages && stop.packages.length > 0 && (
               <div className="space-y-2 text-sm">
-                {stop.packages.slice(0, 3).map((pkg, i) => (
-                  <div key={i} className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
-                    <Package className="w-3.5 h-3.5 text-primary-600 dark:text-primary-400 flex-shrink-0" />
-                    <span className="font-mono text-xs truncate">{pkg}</span>
+                {stop.packages.slice(0, 4).map((pkg, i) => (
+                  <div key={i} className="flex items-center gap-2 bg-white/50 dark:bg-gray-800/50 p-2 rounded-lg">
+                    <div className="w-2 h-2 rounded-full bg-green-600" />
+                    <span className="font-mono text-xs text-gray-700 dark:text-gray-300 truncate">{pkg}</span>
                   </div>
                 ))}
-                {stop.packages.length > 3 && (
-                  <p className="text-xs text-gray-500 italic">+{stop.packages.length - 3} mais</p>
+                {stop.packages.length > 4 && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 italic pl-2">+{stop.packages.length - 4} mais pacotes</p>
                 )}
               </div>
             )}
           </div>
 
+          {/* Status Badge */}
+          <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl border border-yellow-200 dark:border-yellow-800/30 flex items-center gap-2">
+            <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse" />
+            <p className="text-xs font-semibold text-yellow-700 dark:text-yellow-400">Aguardando confirmação</p>
+          </div>
+
           {/* Action Buttons */}
           <div className="pt-4 border-t border-gray-100 dark:border-gray-700 space-y-3">
-            <button className="btn-primary w-full flex items-center justify-center gap-2">
+            <button className="btn-primary w-full flex items-center justify-center gap-2 active:scale-95">
               <Navigation className="w-5 h-5" />
-              Navegar Até Aqui
+              <span>Navegar Até Aqui</span>
             </button>
-            <button className="w-full px-4 py-3 rounded-xl bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white font-semibold hover:bg-gray-200 dark:hover:bg-gray-600 transition-all active:scale-95">
-              Confirmar Entrega
+            <button className="w-full px-4 py-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold hover:shadow-lg hover:shadow-green-500/30 transition-all active:scale-95 shadow-lg shadow-green-500/20 flex items-center justify-center gap-2">
+              <Check className="w-5 h-5" />
+              <span>Confirmar Entrega</span>
             </button>
           </div>
         </div>

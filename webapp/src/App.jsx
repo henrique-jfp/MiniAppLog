@@ -464,8 +464,8 @@ function App() {
         <div className="max-w-lg mx-auto px-5 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div className="relative">
-              <div className="w-10 h-10 gradient-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary-500/30">
-                <span className="text-white font-black text-sm">BE</span>
+              <div className="w-12 h-12 rounded-xl shadow-lg shadow-primary-500/30 overflow-hidden flex-shrink-0">
+                <img src="/logo.svg" alt="Bot Entregador" className="w-full h-full object-cover" />
               </div>
               <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-900 animate-pulse-soft" />
             </div>

@@ -6,6 +6,11 @@ from bot_multidelivery.config import BotConfig
 from bot_multidelivery.session import session_manager
 from bot_multidelivery.persistence import data_store
 from bot_multidelivery.services.deliverer_service import DelivererService
+from bot_multidelivery.services.route_analyzer import RouteAnalyzer
+from bot_multidelivery.parsers.shopee_parser import ShopeeRomaneioParser
+from fastapi import UploadFile, File
+import tempfile
+import shutil
 
 router = APIRouter(prefix="/api")
 
@@ -300,3 +305,59 @@ async def get_stats():
         "pending": session.total_pending,
         "routes_count": len(session.routes)
     }
+
+@router.post("/route/analyze")
+async def analyze_route_file(file: UploadFile = File(...)):
+    """
+    Analisa arquivo de romaneio (XLSX Shopee) e retorna estatísticas de IA.
+    Endpoint portado do Bot Telegram para a Web.
+    """
+    if not file.filename.lower().endswith(('.xlsx', '.xls')):
+        raise HTTPException(status_code=400, detail="Arquivo deve ser Excel (.xlsx)")
+
+    try:
+        # Salva arquivo temporário
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp:
+            shutil.copyfileobj(file.file, tmp)
+            tmp_path = tmp.name
+            
+        try:
+            # Parse usando lógica existente
+            # A classe ShopeeRomaneioParser retorna List[ShopeeDelivery]
+            deliveries = ShopeeRomaneioParser.parse(tmp_path)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Erro ao processar Excel: {str(e)}")
+        finally:
+            # Limpa temp
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+        if not deliveries:
+             raise HTTPException(status_code=400, detail="Nenhuma entrega encontrada no arquivo.")
+
+        # Converte objetos ShopeeDelivery -> Dict para o RouteAnalyzer
+        # O RouteAnalyzer espera chaves: address, bairro, lat, lon
+        analyzer_input = []
+        for d in deliveries:
+            analyzer_input.append({
+                'address': d.address,
+                'bairro': d.bairro,
+                'lat': d.latitude,
+                'lon': d.longitude,
+                # Campos extras que podem ajudar
+                'stop': d.stop
+            })
+            
+        # Executa Análise
+        analyzer = RouteAnalyzer()
+        result = analyzer.analyze_route(analyzer_input)
+        
+        # Retorna Dataclass como Dict
+        from dataclasses import asdict
+        return asdict(result)
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"Erro crítico na análise de rota: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")

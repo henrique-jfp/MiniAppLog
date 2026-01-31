@@ -34,6 +34,11 @@ def clean_destination_address(raw_address: str) -> str:
     # Parte 1: Nome da rua
     street_name = parts[0].strip()
     
+    # [FIX] Remove lixo comum que aparece no nome da rua (antes da vírgula)
+    # Ex: "Rua X apt 201" -> "Rua X"
+    # Remove qualquer coisa que pareça "apt", "ap", "bloco", "loja" seguido de digitos ou no final
+    street_name = re.sub(r'\s+(?:apt\.?|ap\.?|apto\.?|bloco|bl\.?|loja|lj\.?|casa|sl\.?|sala)\s*.*$', '', street_name, flags=re.IGNORECASE)
+
     # Parte 2: Número do prédio (extrai apenas dígitos do início)
     number_part = parts[1].strip()
     

@@ -1,11 +1,11 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* ========================================
-   🎨 PREMIUM DESIGN SYSTEM
+   🎨 PREMIUM DESIGN SYSTEM - ENHANCED
    ======================================== */
 
 @layer base {
@@ -21,9 +21,14 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Remover seleção azul padrão mobile */
   * {
     -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Tipografia Profissional */
+  code, pre, .mono {
+    @apply font-mono;
+    font-family: 'JetBrains Mono', monospace;
   }
 }
 
@@ -103,11 +108,32 @@
     @apply bg-white dark:bg-gray-800 text-gray-900 dark:text-white;
     @apply focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10;
     @apply transition-all duration-200 outline-none;
+    font-family: 'JetBrains Mono', monospace;
   }
 
   /* Divider Elegante */
   .divider {
     @apply border-t border-gray-200/60 dark:border-gray-700/60;
+  }
+
+  /* Bottom Sheet */
+  .bottom-sheet {
+    @apply fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 rounded-t-3xl;
+    @apply shadow-2xl z-40;
+    @apply transition-all duration-300;
+  }
+
+  /* Progress Bar */
+  .progress-bar {
+    @apply fixed top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary-500 via-purple-500 to-accent-500;
+    @apply shadow-lg shadow-primary-500/50;
+    @apply z-50;
+  }
+
+  .progress-bar::after {
+    content: '';
+    @apply absolute inset-0 bg-white/20 blur-lg;
+    @apply animate-pulse;
   }
 }
 
@@ -157,6 +183,26 @@
   .scrollbar-premium::-webkit-scrollbar-thumb:hover {
     @apply bg-gray-400 dark:bg-gray-500;
   }
+
+  /* Mono Font Utility */
+  .font-mono-lg {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.125rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  .font-mono-sm {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  /* Numeric Precision Style */
+  .numeric {
+    font-family: 'JetBrains Mono', monospace;
+    font-variant-numeric: tabular-nums;
+  }
 }
 
 /* ========================================
@@ -165,7 +211,11 @@
 
 @media (max-width: 640px) {
   body {
-    font-size: 15px; /* Slightly larger for mobile readability */
+    font-size: 15px;
+  }
+
+  .bottom-sheet {
+    @apply max-h-screen;
   }
 }
 
@@ -177,7 +227,77 @@
   color-scheme: dark;
 }
 
-/* Smooth color transitions */
 * {
   @apply transition-colors duration-200;
+}
+
+/* ========================================
+   ⚡ ANIMATIONS ENHANCED
+   ======================================== */
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+  }
+  50% {
+    opacity: 0.8;
+    box-shadow: 0 0 40px rgba(139, 92, 246, 0.5);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
+
+.animate-glow-pulse {
+  animation: glow-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Map Container Styles */
+.map-container {
+  @apply rounded-none border-0;
+}
+
+.custom-marker {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+}
+
+.custom-marker-start {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.custom-marker-end {
+  animation: bounce 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.custom-popup {
+  @apply rounded-xl !important;
+}
+
+.custom-popup .leaflet-popup-content {
+  @apply rounded-xl !important;
+  margin: 0 !important;
+}
+
+.custom-popup .leaflet-popup-content-wrapper {
+  @apply rounded-xl !important;
+  border-radius: 0.75rem !important;
+}
+
+.custom-popup .leaflet-popup-tip {
+  background: white;
+}
+
+.dark .custom-popup .leaflet-popup-tip {
+  background: #1f2937;
 }

@@ -378,24 +378,36 @@ Rua General Polidoro, 322, 301
                 <p className="mt-4 text-sm font-semibold">{simpleAnalysis.header?.['✅ RECOMENDAÇÃO']}</p>
               </div>
 
-              {/* Top Drops */}
+              {/* Top Drops - Estilo Melhorado */}
               {simpleAnalysis.top_drops && simpleAnalysis.top_drops.length > 0 && (
-                <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
-                  <h4 className="font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-                    <TrendingUp size={20} className="text-orange-500" />
+                <div className="bg-gradient-to-br from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 rounded-xl p-5 border-2 border-orange-200 dark:border-orange-700">
+                  <h4 className="font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2 text-lg">
+                    <TrendingUp size={22} className="text-orange-600" />
                     🔥 Top Drops (Ruas com Maior Concentração)
                   </h4>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {simpleAnalysis.top_drops.map((drop, i) => (
-                      <div key={i} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <span className="text-2xl">{drop.emoji}</span>
+                      <div 
+                        key={i} 
+                        className={`flex items-center justify-between p-4 rounded-lg border-2 transition-all transform hover:scale-102 ${
+                          i === 0 
+                            ? 'bg-gradient-to-r from-yellow-100 to-orange-100 dark:from-yellow-900/30 dark:to-orange-900/30 border-yellow-300 dark:border-yellow-600 shadow-md' 
+                            : i === 1
+                            ? 'bg-gradient-to-r from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 border-blue-300 dark:border-blue-600'
+                            : 'bg-gradient-to-r from-gray-100 to-slate-100 dark:from-gray-700 dark:to-slate-700 border-gray-300 dark:border-gray-600'
+                        }`}
+                      >
+                        <div className="flex items-center gap-4">
+                          <span className="text-4xl">{drop.emoji}</span>
                           <div>
-                            <p className="font-bold text-gray-900 dark:text-white">{drop.street}</p>
-                            <p className="text-xs text-gray-500">{drop.count} endereços</p>
+                            <p className="font-bold text-gray-900 dark:text-white text-lg">{drop.street}</p>
+                            <p className="text-xs text-gray-600 dark:text-gray-400 font-semibold">{drop.count} endereços</p>
                           </div>
                         </div>
-                        <p className="text-sm font-bold text-gray-700 dark:text-gray-300">{drop.percentage}</p>
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-orange-600 dark:text-orange-400">{drop.percentage}</p>
+                          <p className="text-xs text-gray-500">concentração</p>
+                        </div>
                       </div>
                     ))}
                   </div>

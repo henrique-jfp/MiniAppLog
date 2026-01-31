@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, Package, Map as MapIcon, Users, RefreshCw, Navigation, DollarSign, Sparkles, Zap, TrendingUp, Award } from 'lucide-react'
+import { LayoutDashboard, Package, Map as MapIcon, Users, RefreshCw, Navigation, DollarSign, Sparkles, Zap, TrendingUp, Award, Moon, Sun } from 'lucide-react'
 import MapView from './MapView'
 import FinancialView from './FinancialView'
 import TeamView from './TeamView'
 import RouteAnalysisView from './RouteAnalysisView'
 import SeparationMode from './SeparationMode'
+import ProgressBar from './components/ProgressBar'
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
@@ -14,10 +15,31 @@ function App() {
   const [adminStats, setAdminStats] = useState(null)
   const [financialData, setFinancialData] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [darkMode, setDarkMode] = useState(false)
+  const [loadingProgress, setLoadingProgress] = useState(0)
 
   // 1. Inicialização e Auth
   useEffect(() => {
     let userId = null;
+
+    // Detectar dark mode automático
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    setDarkMode(prefersDark);
+    if (prefersDark) {
+      document.documentElement.classList.add('dark')
+    }
+
+    // Listener para mudanças de dark mode
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleDarkModeChange = (e) => {
+      setDarkMode(e.matches);
+      if (e.matches) {
+        document.documentElement.classList.add('dark')
+      } else {
+        document.documentElement.classList.remove('dark')
+      }
+    };
+    mediaQuery.addEventListener('change', handleDarkModeChange);
 
     // Verifica query param ?tab= para navegação direta
     const params = new URLSearchParams(window.location.search);
@@ -35,10 +57,6 @@ function App() {
         setTgUser(tg.initDataUnsafe.user)
         userId = tg.initDataUnsafe.user.id
       }
-      
-      if (tg.colorScheme === 'dark') {
-        document.documentElement.classList.add('dark')
-      }
     }
 
     // Fallback para Dev
@@ -55,6 +73,8 @@ function App() {
     } else {
       setRoleInfo({ role: 'guest' });
     }
+
+    return () => mediaQuery.removeEventListener('change', handleDarkModeChange);
   }, [])
 
   // 2. Fetch de Dados
@@ -101,7 +121,36 @@ function App() {
   }
 
   const handleRefresh = () => {
-    if (tgUser?.id) fetchUserData(tgUser.id)
+    if (tgUser?.id) {
+      setLoadingProgress(0);
+      setLoading(true);
+      
+      // Simular progresso
+      const interval = setInterval(() => {
+        setLoadingProgress(prev => {
+          if (prev >= 80) {
+            clearInterval(interval);
+            return prev;
+          }
+          return prev + Math.random() * 40;
+        });
+      }, 300);
+
+      fetchUserData(tgUser.id).finally(() => {
+        setLoadingProgress(100);
+        setTimeout(() => setLoadingProgress(0), 500);
+      });
+    }
+  }
+
+  const toggleDarkMode = () => {
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+    if (newDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
   }
 
   // --- RENDERS ---
@@ -411,7 +460,7 @@ function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 text-gray-900 dark:text-gray-100 flex flex-col font-sans">
       {/* Header Premium */}
-      <header className="glass-strong sticky top-0 z-20 border-b border-gray-200/50 dark:border-gray-700/50">
+      <header className="glass-strong sticky top-0 z-20 border-b border-gray-200/50 dark:border-gray-700/50 pt-safe">
         <div className="max-w-lg mx-auto px-5 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div className="relative">
@@ -425,16 +474,29 @@ function App() {
               <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">Sistema de Rotas</p>
             </div>
           </div>
-          <button 
-            onClick={handleRefresh} 
-            className="relative w-10 h-10 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center justify-center transition-all active:scale-90 group"
-          >
-            <RefreshCw 
-              size={18} 
-              className={`${loading ? 'animate-spin text-primary-600' : 'text-gray-500 dark:text-gray-400 group-hover:text-primary-600'} transition-colors`} 
-            />
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={toggleDarkMode}
+              className="relative w-10 h-10 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center justify-center transition-all active:scale-90 group"
+            >
+              {darkMode ? (
+                <Sun size={18} className="text-gray-500 dark:text-gray-400 group-hover:text-primary-600" />
+              ) : (
+                <Moon size={18} className="text-gray-500 dark:text-gray-400 group-hover:text-primary-600" />
+              )}
+            </button>
+            <button 
+              onClick={handleRefresh} 
+              className="relative w-10 h-10 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center justify-center transition-all active:scale-90 group"
+            >
+              <RefreshCw 
+                size={18} 
+                className={`${loading ? 'animate-spin text-primary-600' : 'text-gray-500 dark:text-gray-400 group-hover:text-primary-600'} transition-colors`} 
+              />
+            </button>
+          </div>
         </div>
+        <ProgressBar visible={loadingProgress > 0} percentage={loadingProgress} />
       </header>
 
       {/* Main Content Area */}

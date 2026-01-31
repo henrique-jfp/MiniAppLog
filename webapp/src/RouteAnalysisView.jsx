@@ -37,7 +37,7 @@ export default function RouteAnalysisView() {
     // 1. Carregar Entregadores
     fetch('/api/admin/team')
       .then(r => r.json())
-      .then(setDeliverers)
+      .then(data => setDeliverers(data))
       .catch(() => setDeliverers([]));
 
     // 2. Restaurar Estado da Sessão (Cross-Device)
@@ -62,7 +62,7 @@ export default function RouteAnalysisView() {
             // Recarrega relatório visual
             fetch('/api/session/report')
                .then(r => r.json())
-               .then(setImportAnalysis)
+               .then(data => setImportAnalysis(data))
                .catch(e => console.error("Erro recarregar report", e));
           }
         }

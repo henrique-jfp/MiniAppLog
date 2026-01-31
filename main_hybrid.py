@@ -108,6 +108,6 @@ else:
         }
 
 if __name__ == "__main__":
-    # Roda o servidor na porta 8000 (ou PORT do ambiente)
-    port = int(os.environ.get("PORT", 8000))
+    # Roda o servidor na porta 8080 (ou PORT do ambiente)
+    port = int(os.environ.get("PORT", 8080))
     uvicorn.run("main_hybrid:app", host="0.0.0.0", port=port, reload=False)

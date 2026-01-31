@@ -1217,15 +1217,34 @@ async def start_separation():
         if not session.routes:
             raise HTTPException(status_code=400, detail="Nenhuma rota para separar")
         
+        # Normaliza rotas (pode ser dict ou list)
+        if isinstance(session.routes, dict):
+            routes_list = list(session.routes.values())
+            route_ids = list(session.routes.keys())
+            route_map = session.routes
+        else:
+            routes_list = list(session.routes or [])
+            route_ids = [getattr(r, "id", f"ROTA_{i+1}") for i, r in enumerate(routes_list)]
+            route_map = {rid: r for rid, r in zip(route_ids, routes_list)}
+
+        def _route_packages(route):
+            if hasattr(route, "packages") and route.packages is not None:
+                return route.packages
+            if hasattr(route, "optimized_order") and route.optimized_order is not None:
+                return route.optimized_order
+            return []
+
         # Conta total de pacotes
-        total_packages = sum(len(r.packages) for r in session.routes.values())
+        total_packages = sum(len(_route_packages(r)) for r in routes_list)
         
         # Cria sessão de separação
         sep_session = SeparationSession(
             session_id=session.session_id,
-            route_ids=list(session.routes.keys()),
+            route_ids=route_ids,
             total_packages=total_packages
         )
+        # cache para o scan
+        sep_session._route_map = route_map
         
         active_separation_sessions[session.session_id] = sep_session
         
@@ -1257,73 +1276,99 @@ async def scan_package(data: SeparationScanInput):
         found_package = None
         found_route = None
         package_index = None
-        
+
+        # Normaliza rotas (pode ser dict ou list)
+        if hasattr(sep_session, "_route_map") and isinstance(sep_session._route_map, dict):
+            route_map = sep_session._route_map
+        else:
+            if isinstance(session.routes, dict):
+                route_map = session.routes
+            else:
+                routes_list = list(session.routes or [])
+                route_map = {getattr(r, "id", f"ROTA_{i+1}"): r for i, r in enumerate(routes_list)}
+
+        barcode = (data.barcode or "").strip().upper()
+
+        if not hasattr(sep_session, "scanned_codes"):
+            sep_session.scanned_codes = set()
+            sep_session.scanned_at_map = {}
+
         for route_id in sep_session.route_ids:
-            route = session.routes.get(route_id)
+            route = route_map.get(route_id)
             if not route:
                 continue
-            
+
+            if hasattr(route, "packages") and route.packages is not None:
+                packages = route.packages
+            elif hasattr(route, "optimized_order") and route.optimized_order is not None:
+                packages = route.optimized_order
+            else:
+                packages = []
+
             # Monta sequência de endereços únicos (agrupa por endereço)
             address_sequence = {}
             unique_stop = 0
-            for pkg in route.packages:
-                addr_key = pkg.address.lower().strip()
-                if addr_key not in address_sequence:
+            for pkg in packages:
+                addr = getattr(pkg, "address", "") or ""
+                addr_key = addr.lower().strip()
+                if addr_key not in address_sequence and addr_key:
                     unique_stop += 1
                     address_sequence[addr_key] = unique_stop
-            
-            for idx, pkg in enumerate(route.packages):
-                # Compara barcode ou ID do pacote
-                if pkg.barcode == data.barcode or pkg.id == data.barcode:
+
+            for idx, pkg in enumerate(packages, 1):
+                pkg_code = getattr(pkg, "barcode", None) or getattr(pkg, "package_id", None) or getattr(pkg, "id", None)
+                if pkg_code and str(pkg_code).strip().upper() == barcode:
                     found_package = pkg
                     found_route = route
-                    # Usa o número da parada agregada (por endereço), não o índice do pacote
-                    addr_key = pkg.address.lower().strip()
-                    package_index = address_sequence.get(addr_key, 1)
+                    addr = getattr(pkg, "address", "") or ""
+                    addr_key = addr.lower().strip()
+                    package_index = address_sequence.get(addr_key, idx)
                     break
-            
+
             if found_package:
                 break
-        
+
         if not found_package or not found_route:
             raise HTTPException(status_code=404, detail="Pacote não encontrado no romaneio")
-        
+
         # Já foi bipado?
-        if found_package.scanned_at:
+        if barcode in sep_session.scanned_codes:
             return {
                 "status": "already_scanned",
                 "message": "Pacote já foi bipado anteriormente",
-                "scanned_at": found_package.scanned_at.isoformat(),
+                "scanned_at": sep_session.scanned_at_map.get(barcode),
                 "route_color": found_route.color,
-                "deliverer_name": found_route.assigned_deliverer.name if found_route.assigned_deliverer else "Não atribuído",
+                "deliverer_name": found_route.assigned_to_name or "Não atribuído",
                 "sequence": package_index
             }
-        
+
         # Marca como bipado
-        found_package.scanned_at = datetime.now()
-        found_package.sequence_in_route = package_index
-        
+        sep_session.scanned_codes.add(barcode)
+        sep_session.scanned_at_map[barcode] = datetime.now().isoformat()
+
         # Atualiza contador
         sep_session.scanned_packages += 1
-        
+
         # Verifica se completou
         if sep_session.scanned_packages >= sep_session.total_packages:
             sep_session.is_complete = True
             sep_session.completed_at = datetime.now()
-        
+
+        total_in_route = len(getattr(found_route, "packages", None) or getattr(found_route, "optimized_order", None) or [])
+
         return {
             "status": "success",
             "route_color": found_route.color,
-            "deliverer_name": found_route.assigned_deliverer.name if found_route.assigned_deliverer else "Não atribuído",
-            "deliverer_id": found_route.assigned_deliverer.telegram_id if found_route.assigned_deliverer else None,
+            "deliverer_name": found_route.assigned_to_name or "Não atribuído",
+            "deliverer_id": found_route.assigned_to_telegram_id,
             "sequence": package_index,
-            "total_in_route": len(found_route.packages),
+            "total_in_route": total_in_route,
             "progress": {
                 "scanned": sep_session.scanned_packages,
                 "total": sep_session.total_packages,
                 "percentage": sep_session.progress_percentage
             },
-            "address": found_package.address
+            "address": getattr(found_package, "address", None)
         }
     except HTTPException as he:
         raise he

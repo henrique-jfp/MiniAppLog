@@ -26,6 +26,9 @@ class BotConfig:
     # Admin que controla tudo
     ADMIN_TELEGRAM_ID = int(os.getenv('ADMIN_TELEGRAM_ID', '0'))
     
+    # URL do Mini App (Railway)
+    WEBAPP_URL = os.getenv('WEBAPP_URL', 'https://miniapplog-production.up.railway.app') # Default placeholder
+
     # Entregadores cadastrados (LEGADO - usar deliverer_service agora)
     DELIVERY_PARTNERS: List[DeliveryPartner] = []
     

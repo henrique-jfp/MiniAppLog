@@ -5,7 +5,7 @@ Fluxo completo de admin + entregadores
 """
 import os
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, WebAppInfo
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 from datetime import datetime, timedelta
 from .config import BotConfig, DeliveryPartner
@@ -93,26 +93,25 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if user_id == BotConfig.ADMIN_TELEGRAM_ID:
         keyboard = [
+            [KeyboardButton("🚀 ABRIR MINI APP", web_app=WebAppInfo(url=BotConfig.WEBAPP_URL))],
             [KeyboardButton("[PACOTE] Nova Sessão do Dia")],
             [KeyboardButton("[GRAFICO] Status Atual"), KeyboardButton("[DINHEIRO] Relatório Financeiro")],
             [KeyboardButton("[PESSOAS] Entregadores"), KeyboardButton("🏆 Ranking")],
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         await update.message.reply_text(
-            "[ROCKET] <b>BOT MULTI-ENTREGADOR v20/10</b>\n"
+            "📱 <b>[MINI APP] SISTEMA HYBRID v3.0</b>\n"
             "---\n\n"
-            "👋 E aí, <b>CHEFE</b>! Pronto pra dominar as entregas?\n\n"
-            "<b>[RAPIDO] FLUXO RÁPIDO:</b>\n"
-            "1️⃣ <code>/importar</code> - Sobe romaneios da Shopee\n"
-            "2️⃣ Seleciona entregadores disponíveis\n"
-            "3️⃣ <code>/otimizar</code> - Divide + roteiriza + MANDA!\n\n"
-            "<b>🛠️ GERENCIAR:</b>\n"
-            "- <code>/add_entregador</code> - Cadastra novo entregador\n"
-            "- <code>/entregadores</code> - Lista do time\n"
-            "- <code>/ranking</code> - Quem tá mandando bem\n\n"
-            "[DICA] <code>/help</code> pra ver TUDO que esse bot faz\n\n"
+            "🔥 <b>O FUTURO CHEGOU, CHEFE!</b>\n"
+            "Agora temos um frontend React rodando DENTRO do Telegram.\n\n"
+            "👇 <b>CLIQUE NO BOTÃO 'ABRIR MINI APP' ABAIXO</b>\n"
+            "Pra ver o Dashboard, Mapas e Gestão em tempo real!\n\n"
+            "<b>💻 COMANDOS CLÁSSICOS:</b>\n"
+            "1️⃣ <code>/importar</code> - Upload de arquivos\n"
+            "2️⃣ <code>/otimizar</code> - Processamento\n"
+            "3️⃣ <code>/entregadores</code> - Gestão de equipe\n\n"
             "---\n"
-            "[FIRE] <i>Bora fazer grana!</i>",
+            "[FIRE] <i>Hacker Mode Activated</i>",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
@@ -121,6 +120,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         partner = BotConfig.get_partner_by_id(user_id)
         if partner:
             keyboard = [
+                [KeyboardButton("📦 MEU PAINEL DE ENTREGAS", web_app=WebAppInfo(url=BotConfig.WEBAPP_URL))],
                 [KeyboardButton("[MAPA] Minha Rota Hoje")],
                 [KeyboardButton("[OK] Marcar Entrega"), KeyboardButton("[X] Reportar Problema")]
             ]
@@ -132,15 +132,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🏍️ <b>E AÍ, {partner.name.upper()}!</b>\n"
                 f"---\n\n"
                 f"📛 Status: {tipo}\n"
+                f"👇 <b>Use o botão 'MEU PAINEL' para ver sua rota!</b>\n\n"
                 f"[PACOTE] Capacidade: {partner.max_capacity} pacotes/dia\n"
                 f"[DINHEIRO] Ganho: R$ {partner.cost_per_package:.2f}/pacote\n\n"
-                f"<b>[ALVO] COMO FUNCIONA:</b>\n"
-                f"1️⃣ Admin distribui as rotas\n"
-                f"2️⃣ Você recebe um mapa HTML interativo\n"
-                f"3️⃣ Abre no navegador e segue a ordem\n"
-                f"4️⃣ Marca cada entrega ([OK]/[X])\n\n"
-                f"🔔 <i>Aguardando distribuição de rotas...</i>\n\n"
-                f"[DICA] <code>/help</code> - Ver todos os comandos\n\n"
                 f"---\n"
                 f"[ROCKET] <i>Bora faturar!</i>",
                 parse_mode='HTML',

@@ -1,6 +1,11 @@
 import asyncio
 import logging
 import os
+from dotenv import load_dotenv
+
+# Carrega variáveis de ambiente ANTES de qualquer coisa
+load_dotenv()
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -31,13 +36,17 @@ async def lifespan(server: FastAPI):
     
     if bot_app:
         # 2. Inicializa o bot
-        await bot_app.initialize()
-        await bot_app.start()
-        
-        # 3. Inicia o Polling (em background)
-        # O Polling roda no loop de eventos do FastAPI
-        logger.info("🧠 [BOT] Iniciando Polling do Telegram...")
-        await bot_app.updater.start_polling(drop_pending_updates=True, allowed_updates=["message", "callback_query"])
+        try:
+            await bot_app.initialize()
+            await bot_app.start()
+            
+            # 3. Inicia o Polling (em background)
+            logger.info("🧠 [BOT] Iniciando Polling do Telegram...")
+            await bot_app.updater.start_polling(drop_pending_updates=True, allowed_updates=["message", "callback_query"])
+            logger.info("✅ [OK] Bot Iniciado com Sucesso!")
+        except Exception as e:
+            logger.error(f"❌ [ERRO CRÍTICO] Falha ao iniciar o Bot: {e}")
+            logger.warning("⚠️ O Servidor Web continuará rodando, mas o Bot está OFFLINE.")
         
         logger.info("✅ [OK] Sistema Operacional e Pronto!")
     else:

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileUp, List, Sparkles, MapPin, AlertCircle, Users, Send, Map } from 'lucide-react';
+import { FileUp, List, Sparkles, MapPin, AlertCircle, Users, Send, Map, TrendingUp, Building2, Home } from 'lucide-react';
 
 export default function RouteAnalysisView() {
   const [file, setFile] = useState(null);
@@ -76,6 +76,7 @@ export default function RouteAnalysisView() {
   };
 
   const handleImport = async () => {
+      {/* Resultado da Análise */}
     if (!file) return;
 
     setLoading(true);
@@ -97,6 +98,7 @@ export default function RouteAnalysisView() {
 
       const data = await res.json();
       setMinimapUrl(data.minimap_url || null);
+
     } catch (err) {
       setError(err.message);
     } finally {
@@ -120,6 +122,7 @@ export default function RouteAnalysisView() {
       if (!res.ok) {
         const errData = await res.json();
         throw new Error(errData.detail || 'Falha ao otimizar rotas');
+
       }
 
       const data = await res.json();
@@ -141,6 +144,7 @@ export default function RouteAnalysisView() {
 
       if (!res.ok) {
         const errData = await res.json();
+
         throw new Error(errData.detail || 'Falha ao atribuir');
       }
 
@@ -164,6 +168,7 @@ export default function RouteAnalysisView() {
     } finally {
       setLoading(false);
     }
+
   };
 
   const handleCombinedMap = async () => {
@@ -171,6 +176,7 @@ export default function RouteAnalysisView() {
       const res = await fetch('/api/routes/combined-map');
       if (!res.ok) {
         const errData = await res.json();
+
         throw new Error(errData.detail || 'Falha ao gerar mapa completo');
       }
       const data = await res.json();
@@ -194,6 +200,7 @@ export default function RouteAnalysisView() {
       });
       if (!res.ok) {
         const errData = await res.json();
+
         throw new Error(errData.detail || 'Falha ao finalizar sessão');
       }
     } catch (err) {
@@ -210,6 +217,7 @@ export default function RouteAnalysisView() {
         <h2 className="text-xl font-bold flex items-center gap-2 mb-2">
           <Sparkles className="text-purple-500" /> Análise de Rota com IA
         </h2>
+
         <p className="text-sm text-gray-500">
           Envie o romaneio da Shopee (.xlsx) para inteligência verificar se vale a pena.
         </p>

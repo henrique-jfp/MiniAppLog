@@ -367,16 +367,51 @@ function App() {
   )
 
   const renderContent = () => {
-    // Tela de Loading Inicial
+    // Tela de Loading Inicial - SPLASH SCREEN PREMIUM
     if (roleInfo.role === 'loading') {
         return (
-            <div className="h-full flex flex-col items-center justify-center">
-                <div className="relative w-16 h-16 mb-6">
-                  <div className="absolute inset-0 border-4 border-primary-200 dark:border-primary-900 rounded-full" />
-                  <div className="absolute inset-0 border-4 border-transparent border-t-primary-600 rounded-full animate-spin" />
+            <div className="h-full w-full flex flex-col items-center justify-center bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
+              {/* Logo Grande */}
+              <div className="mb-8 animate-fade-in">
+                <div className="w-24 h-24 rounded-2xl shadow-2xl shadow-primary-500/30 overflow-hidden border-4 border-white dark:border-gray-800 mx-auto">
+                  <img src="/logoMiniApp.jpg" alt="Bot Entregador" className="w-full h-full object-cover" />
                 </div>
-                <p className="text-gray-600 dark:text-gray-400 font-medium">Carregando...</p>
-                <p className="text-xs text-gray-400 mt-1">Preparando o ambiente</p>
+              </div>
+
+              {/* Título */}
+              <div className="text-center mb-12 animate-slide-up">
+                <h1 className="text-4xl font-black text-gray-900 dark:text-white mb-2">Bot Entregador</h1>
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Sistema de Rotas Inteligente</p>
+              </div>
+
+              {/* Loading Animation */}
+              <div className="mb-12 animate-fade-in">
+                <div className="relative w-16 h-16">
+                  <div className="absolute inset-0 border-4 border-primary-200 dark:border-primary-900 rounded-full" />
+                  <div className="absolute inset-0 border-4 border-transparent border-t-primary-600 border-r-primary-500 rounded-full animate-spin" />
+                </div>
+              </div>
+
+              {/* Status Text */}
+              <div className="text-center mb-8 space-y-2">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">Preparando seu ambiente</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Carregando dados e sincronizando rotas...</p>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="w-48 h-2 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden shadow-inner">
+                <div className="h-full bg-gradient-to-r from-primary-500 via-purple-500 to-primary-500 animate-shimmer" style={{
+                  backgroundSize: '200% 100%',
+                  animation: 'shimmer 2s infinite'
+                }} />
+              </div>
+
+              {/* Footer */}
+              <div className="absolute bottom-8 text-center">
+                <p className="text-xs text-gray-400 dark:text-gray-600">
+                  Versão 3.0 • Sistema Hybrid
+                </p>
+              </div>
             </div>
         )
     }
@@ -464,8 +499,8 @@ function App() {
         <div className="max-w-lg mx-auto px-5 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div className="relative">
-              <div className="w-12 h-12 rounded-xl shadow-lg shadow-primary-500/30 overflow-hidden flex-shrink-0">
-                <img src="/logo.svg" alt="Bot Entregador" className="w-full h-full object-cover" />
+              <div className="w-12 h-12 rounded-xl shadow-lg shadow-primary-500/30 overflow-hidden flex-shrink-0 border-2 border-white dark:border-gray-700">
+                <img src="/logoMiniApp.jpg" alt="Bot Entregador" className="w-full h-full object-cover" />
               </div>
               <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-900 animate-pulse-soft" />
             </div>

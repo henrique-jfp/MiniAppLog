@@ -245,8 +245,8 @@ function App() {
               <Sparkles className="w-6 h-6 text-white" />
             </div>
             <div className="text-left">
-              <p className="text-white font-bold text-lg">Análise Inteligente</p>
-              <p className="text-purple-100 text-xs font-medium">Upload & Otimização IA</p>
+              <p className="text-white font-bold text-lg">Roteirização</p>
+              <p className="text-purple-100 text-xs font-medium">Upload & Otimização de Rotas</p>
             </div>
           </div>
           <div className="text-white/70 group-hover:text-white group-hover:translate-x-1 transition-all">
@@ -555,7 +555,7 @@ function App() {
             <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-2">
               {[
                 { id: 'dashboard', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
-                { id: 'analysis', icon: <Sparkles size={20} />, label: 'Análise IA' },
+                { id: 'analysis', icon: <Sparkles size={20} />, label: 'Roteirização' },
                 { id: 'separation', icon: <Navigation size={20} />, label: 'Separação' },
                 { id: 'map', icon: <MapIcon size={20} />, label: 'Mapa' },
                 { id: 'financial', icon: <DollarSign size={20} />, label: 'Financeiro' },

@@ -19,13 +19,20 @@ from fastapi.staticfiles import StaticFiles
 # Injeta Health Check (Observabilidade)
 scanner_app.include_router(health_router)
 
-# Tenta carregar API completa
-try:
-    from api_routes import router as main_api_router
-    scanner_app.include_router(main_api_router)
-    print("✅ API Routes incluídas com sucesso no servidor web.")
-except Exception as e:
-    print(f"⚠️ Aviso: Não foi possível carregar as rotas da API: {e}")
+# --- 🚀 LOAD MODULAR API ROUTERS ---
+from fastapi import APIRouter
+from bot_multidelivery.routers import admin, auth, financial, session, logistic
+
+api_router = APIRouter(prefix="/api")
+api_router.include_router(admin.router)
+api_router.include_router(auth.router)
+api_router.include_router(financial.router)
+api_router.include_router(session.router)
+api_router.include_router(logistic.router)
+
+scanner_app.include_router(api_router)
+print("✅ Routers Modulares incluídos com sucesso.")
+# -------------------------------------
 
 # Servir Frontend (SPA) se existir build
 frontend_path = Path("webapp/dist")

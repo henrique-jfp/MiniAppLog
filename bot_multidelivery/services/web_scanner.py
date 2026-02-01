@@ -6,6 +6,7 @@ import logging
 from fastapi import FastAPI, WebSocket, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 import json
@@ -15,7 +16,17 @@ from .barcode_separator import barcode_separator
 logger = logging.getLogger(__name__)
 
 # FastAPI app para web scanner
-scanner_app = FastAPI()
+scanner_app = FastAPI(title="Bot Multi-Entregador API")
+
+# 🛡️ CONFIGURAÇÃO DE SEGURANÇA (CORS)
+# Permite que o Frontend (React) converse com o Backend sem bloqueios
+scanner_app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Em produção, ideal restringir para seu domínio
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Models
 class ScanRequest(BaseModel):

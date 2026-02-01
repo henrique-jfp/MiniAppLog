@@ -11,10 +11,11 @@ import logging
 from .services.session_engine import SessionEngine
 from .services.barcode_ocr_service import scan_barcode_from_image
 from .database import get_db
+from .security import verify_api_key
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/sessions", tags=["sessions"])
+router = APIRouter(prefix="/api/sessions", tags=["sessions"], dependencies=[Depends(verify_api_key)])
 
 
 # ============================================

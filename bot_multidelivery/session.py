@@ -5,9 +5,16 @@ Controla fluxo de importação de romaneios, divisão de rotas e tracking
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional
 from datetime import datetime
+from enum import Enum
 import uuid
 from .clustering import DeliveryPoint, Cluster
 
+class RouteStatus(str, Enum):
+    PENDING = "pending"
+    SEPARATING = "separating"
+    READY = "ready"
+    IN_TRANSIT = "in_transit"
+    COMPLETED = "completed"
 
 @dataclass
 class Romaneio:
@@ -29,6 +36,9 @@ class Route:
     assigned_to_telegram_id: Optional[int] = None
     assigned_to_name: Optional[str] = None
     color: str = '#667eea'  # Cor única do entregador
+    status: RouteStatus = RouteStatus.PENDING
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
     optimized_order: List[DeliveryPoint] = field(default_factory=list)
     delivered_packages: List[str] = field(default_factory=list)  # package_ids
     map_file: Optional[str] = None  # Caminho do mapa HTML gerado

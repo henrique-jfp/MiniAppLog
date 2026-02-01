@@ -13,6 +13,25 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from bot_multidelivery.bot import run_bot
 from bot_multidelivery.services.web_scanner import scanner_app
+from bot_multidelivery.health import router as health_router
+from fastapi.staticfiles import StaticFiles
+
+# Injeta Health Check (Observabilidade)
+scanner_app.include_router(health_router)
+
+# Tenta carregar API completa
+try:
+    from api_routes import router as main_api_router
+    scanner_app.include_router(main_api_router)
+    print("✅ API Routes incluídas com sucesso no servidor web.")
+except Exception as e:
+    print(f"⚠️ Aviso: Não foi possível carregar as rotas da API: {e}")
+
+# Servir Frontend (SPA) se existir build
+frontend_path = Path("webapp/dist")
+if frontend_path.exists():
+    print(f"✅ Servindo frontend estático de: {frontend_path}")
+    scanner_app.mount("/", StaticFiles(directory=str(frontend_path), html=True), name="static")
 
 # --- WEB SERVER PARA SCANNER + HEALTH CHECK ---
 def start_web_server():

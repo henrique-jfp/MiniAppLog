@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { Package, Truck, CheckCircle, Clock, ChevronRight, Barcode, Play, Flag, ArrowLeft } from 'lucide-react';
+import { fetchWithAuth } from './api_client';
 
 // Color map helper
 const COLOR_NAMES = {
@@ -85,7 +86,7 @@ export default function SeparationMode() {
 
   const fetchRoutes = async () => {
     try {
-      const res = await fetch('/api/session/routes_status');
+      const res = await fetchWithAuth('/api/session/routes_status');
       if (res.ok) {
         const data = await res.json();
         setRoutes(data);
@@ -97,7 +98,7 @@ export default function SeparationMode() {
 
   const startSeparationSession = async () => {
     try {
-      const res = await fetch('/api/separation/start', { method: 'POST' });
+      const res = await fetchWithAuth('/api/separation/start', { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
         setSeparationSession(data.session);
@@ -113,9 +114,8 @@ export default function SeparationMode() {
     setError('');
 
     try {
-      const res = await fetch('/api/separation/scan', {
+      const res = await fetchWithAuth('/api/separation/scan', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ barcode: barcode.trim() })
       });
       const data = await res.json();
@@ -144,7 +144,7 @@ export default function SeparationMode() {
   const handleStartRoute = async (routeId) => {
       if (!confirm("Confirmar saída do entregador para rota?")) return;
       try {
-          const res = await fetch(`/api/route/${routeId}/start`, { method: 'POST' });
+          const res = await fetchWithAuth(`/api/route/${routeId}/start`, { method: 'POST' });
           if (res.ok) {
               fetchRoutes();
               alert("Rota iniciada!");
@@ -157,7 +157,7 @@ export default function SeparationMode() {
   const handleFinishRoute = async (routeId) => {
     if (!confirm("Confirmar que a rota foi concluída e o entregador retornou?")) return;
     try {
-        const res = await fetch(`/api/route/${routeId}/finish`, { method: 'POST' });
+        const res = await fetchWithAuth(`/api/route/${routeId}/finish`, { method: 'POST' });
         if (res.ok) {
             fetchRoutes();
             alert("Rota finalizada! Dados salvos no histórico.");

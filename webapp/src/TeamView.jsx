@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, UserPlus, Trash2, Shield, Truck, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
+import { fetchWithAuth } from './api_client';
 
 export default function TeamView() {
   const [team, setTeam] = useState([]);
@@ -11,7 +12,7 @@ export default function TeamView() {
   // Fetch Team
   const refreshTeam = () => {
     setLoading(true);
-    fetch('/api/admin/team')
+    fetchWithAuth('/api/admin/team')
       .then(r => r.json())
       .then(data => {
         setTeam(data);
@@ -32,9 +33,8 @@ export default function TeamView() {
     e.preventDefault();
     if (!newMember.name || !newMember.telegram_id) return;
 
-    const res = await fetch('/api/admin/team', {
+    const res = await fetchWithAuth('/api/admin/team', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...newMember,
         telegram_id: parseInt(newMember.telegram_id)
@@ -53,13 +53,13 @@ export default function TeamView() {
   const handleRemove = async (id) => {
     if (!confirm('Tem certeza que deseja remover este entregador?')) return;
     
-    await fetch(`/api/admin/team/${id}`, { method: 'DELETE' });
+    await fetchWithAuth(`/api/admin/team/${id}`, { method: 'DELETE' });
     refreshTeam();
   };
 
   const refreshTransfers = async () => {
     try {
-      const res = await fetch('/api/delivery/pending-transfers');
+      const res = await fetchWithAuth('/api/delivery/pending-transfers');
       const data = await res.json();
       setPendingTransfers(data.transfers || []);
     } catch (err) {
@@ -72,9 +72,8 @@ export default function TeamView() {
       const adminId = 123456; // TODO: pegar do contexto
       const adminName = 'Admin'; // TODO: pegar do contexto
       
-      const res = await fetch('/api/delivery/transfer-approve', {
+      const res = await fetchWithAuth('/api/delivery/transfer-approve', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           transfer_id: transferId,
           approved,

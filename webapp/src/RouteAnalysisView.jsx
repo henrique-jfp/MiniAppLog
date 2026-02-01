@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { FileUp, Sparkles, MapPin, AlertCircle, Users, Send, Map, TrendingUp, Navigation } from 'lucide-react';
 import { useResponsive } from './hooks/useResponsive';
 import BarcodeScanner from './components/BarcodeScanner';
+import { fetchWithAuth } from './api_client';
 
 export default function RouteAnalysisView() {
   const responsive = useResponsive();
@@ -35,13 +36,13 @@ export default function RouteAnalysisView() {
 
   useEffect(() => {
     // 1. Carregar Entregadores
-    fetch('/api/admin/team')
+    fetchWithAuth('/api/admin/team')
       .then(r => r.json())
       .then(data => setDeliverers(data))
       .catch(() => setDeliverers([]));
 
     // 2. Restaurar Estado da Sessão (Cross-Device)
-    fetch('/api/session/state')
+    fetchWithAuth('/api/session/state')
       .then(r => r.json())
       .then(data => {
         if (data.active) {
@@ -60,7 +61,7 @@ export default function RouteAnalysisView() {
             }
             
             // Recarrega relatório visual
-            fetch('/api/session/report')
+            fetchWithAuth('/api/session/report')
                .then(r => r.json())
                .then(data => setImportAnalysis(data))
                .catch(e => console.error("Erro recarregar report", e));
@@ -87,7 +88,7 @@ export default function RouteAnalysisView() {
     formData.append('route_value', parseFloat(simpleRouteValue));
 
     try {
-      const res = await fetch('/api/routes/analyze-addresses', {
+      const res = await fetchWithAuth('/api/routes/analyze-addresses', {
         method: 'POST',
         body: formData,
       });
@@ -127,7 +128,7 @@ export default function RouteAnalysisView() {
     formData.append('addresses_text', addressesText);
 
     try {
-      const res = await fetch('/api/routes/generate-map', {
+      const res = await fetchWithAuth('/api/routes/generate-map', {
         method: 'POST',
         body: formData,
       });
@@ -168,7 +169,7 @@ export default function RouteAnalysisView() {
     formData.append('file', file);
 
     try {
-      const res = await fetch('/api/romaneio/import', {
+      const res = await fetchWithAuth('/api/romaneio/import', {
         method: 'POST',
         body: formData,
       });
@@ -204,7 +205,7 @@ export default function RouteAnalysisView() {
     formData.append('file', file);
 
     try {
-      const res = await fetch('/api/session/romaneio/import-additional', {
+      const res = await fetchWithAuth('/api/session/romaneio/import-additional', {
         method: 'POST',
         body: formData,
       });
@@ -229,7 +230,7 @@ export default function RouteAnalysisView() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/session/report');
+      const res = await fetchWithAuth('/api/session/report');
       if (!res.ok) {
         const errData = await res.json();
         throw new Error(errData.detail || 'Falha ao gerar relatório');
@@ -249,9 +250,8 @@ export default function RouteAnalysisView() {
     setRoutes([]);
 
     try {
-      const res = await fetch('/api/routes/optimize', {
+      const res = await fetchWithAuth('/api/routes/optimize', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ num_deliverers: Number(numDeliverers) })
       });
 
@@ -271,9 +271,8 @@ export default function RouteAnalysisView() {
 
   const handleAssign = async (routeId, delivererId) => {
     try {
-      const res = await fetch('/api/routes/assign', {
+      const res = await fetchWithAuth('/api/routes/assign', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ route_id: routeId, deliverer_id: Number(delivererId) })
       });
 
@@ -293,7 +292,7 @@ export default function RouteAnalysisView() {
     
     setLoading(true);
     try {
-      await fetch('/api/session/cancel-import', { method: 'POST' });
+      await fetchWithAuth('/api/session/cancel-import', { method: 'POST' });
       // Reset local state
       setHasRomaneio(false);
       setSessionId(null);

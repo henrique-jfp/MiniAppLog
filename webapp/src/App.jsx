@@ -9,6 +9,8 @@ import HistoryView from './pages/HistoryView'
 import ProgressBar from './components/ProgressBar'
 import { useResponsive } from './hooks/useResponsive'
 
+import { fetchWithAuth } from './api_client'
+
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [tgUser, setTgUser] = useState(null)
@@ -85,7 +87,7 @@ function App() {
     setLoading(true)
     try {
       // Auth
-      const rAuth = await fetch(`/api/auth/me?user_id=${id}`)
+      const rAuth = await fetchWithAuth(`/api/auth/me?user_id=${id}`)
       const authData = await rAuth.json()
       setRoleInfo(authData)
 
@@ -94,7 +96,7 @@ function App() {
       
       // Financial (Todos têm acesso, mas dados diferentes)
       promises.push(
-          fetch(`/api/financial/balance?user_id=${id}`)
+          fetchWithAuth(`/api/financial/balance?user_id=${id}`)
             .then(r => r.json())
             .then(data => setFinancialData(data))
             .catch(err => console.error("Erro Finanças", err))
@@ -102,13 +104,13 @@ function App() {
 
       if (authData.role === 'admin') {
         promises.push(
-            fetch('/api/admin/stats')
+            fetchWithAuth('/api/admin/stats')
                 .then(r => r.json())
                 .then(data => setAdminStats(data))
         )
       } else if (authData.role === 'deliverer') {
         promises.push(
-            fetch(`/api/deliverer/route?user_id=${id}`)
+            fetchWithAuth(`/api/deliverer/route?user_id=${id}`)
                 .then(r => r.json())
                 .then(data => setRouteInfo(data))
         )

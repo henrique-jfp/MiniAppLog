@@ -159,7 +159,7 @@ function App() {
   // --- RENDERS ---
 
   const renderAdminDashboard = () => {
-    const responsive = useResponsive();
+    // const responsive = useResponsive(); // REMOVED: Hook usage inside conditional function
     return (
     <div className={`${responsive.isDesktop ? 'space-y-8' : 'space-y-5'} animate-fade-in`}>
       {/* Hero Stats Card */}
